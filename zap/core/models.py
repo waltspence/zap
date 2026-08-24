@@ -115,6 +115,14 @@ class Match:
     def to_dict(self) -> dict:
         return {"key": self.key, "value": self.value, "confidence": self.confidence}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Match":
+        return cls(
+            key=d.get("key", "unknown"),
+            value=d.get("value", ""),
+            confidence=d.get("confidence", CONFIDENCE_HEURISTIC),
+        )
+
 
 @dataclass(frozen=True)
 class Fingerprint:
@@ -223,6 +231,24 @@ class Artifact:
             "notes": list(self.notes),
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Artifact":
+        fp = d.get("fingerprint")
+        return cls(
+            path=Path(d["path"]),
+            category=d.get("category", CAT_OTHER),
+            match=Match.from_dict(d.get("match", {})),
+            risk=d.get("risk", RISK_NORMAL),
+            size_bytes=int(d.get("size_bytes", 0)),
+            item_count=int(d.get("item_count", 1)),
+            shared=bool(d.get("shared", False)),
+            reversible=bool(d.get("reversible", True)),
+            requires_root=bool(d.get("requires_root", False)),
+            auto_selected=bool(d.get("auto_selected", False)),
+            fingerprint=Fingerprint.from_dict(fp) if fp else None,
+            notes=list(d.get("notes", [])),
+        )
+
 
 @dataclass
 class App:
@@ -256,6 +282,23 @@ class App:
             "degraded": self.degraded,
             "managed_by": self.managed_by,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "App":
+        return cls(
+            name=d.get("name", ""),
+            identifier=d.get("identifier", ""),
+            path=Path(d.get("path", "")),
+            bundle_id=d.get("bundle_id"),
+            display_name=d.get("display_name"),
+            executable=d.get("executable"),
+            team_id=d.get("team_id"),
+            version=d.get("version"),
+            embedded_bundle_ids=list(d.get("embedded_bundle_ids", [])),
+            protected=bool(d.get("protected", False)),
+            degraded=bool(d.get("degraded", False)),
+            managed_by=d.get("managed_by"),
+        )
 
 
 @dataclass
@@ -299,6 +342,17 @@ class Plan:
             "summary": self.summary(),
             "warnings": list(self.warnings),
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Plan":
+        return cls(
+            app=App.from_dict(d.get("app", {})),
+            artifacts=[Artifact.from_dict(a) for a in d.get("artifacts", [])],
+            created_at=d.get("created_at", ""),
+            schema_version=int(d.get("schema_version", 1)),
+            zap_version=d.get("zap_version", ""),
+            warnings=list(d.get("warnings", [])),
+        )
 
 
 # Status values for a per-artifact action result.

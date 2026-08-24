@@ -272,12 +272,15 @@ class Engine:
         *,
         only: Optional[Set[str]] = None,
         exclude: Optional[Set[str]] = None,
-        aggressive: bool = False,
-        include_low: bool = False,
         include_system: bool = False,
         method: str = "trash",
     ) -> Tuple[List[Artifact], List[str], List[dict]]:
-        """Return (selected, unknown_ids, notes)."""
+        """Return (selected, unknown_ids, notes).
+
+        The default action set is the plan's ``auto_selected`` artifacts (whose
+        tiers were fixed at scan time by --aggressive/--include-low). ``only``
+        overrides that with an explicit id set; ``exclude`` subtracts ids.
+        """
         by_id = {a.id: a for a in plan.artifacts}
         unknown: List[str] = []
         notes: List[dict] = []
