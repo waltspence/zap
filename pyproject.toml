@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zap-uninstaller"
+version = "0.1.0"
+description = "A terminal-native, agent-friendly app uninstaller — finds and removes an app plus all of its leftover files. Cross-platform (macOS + Linux), zero dependencies."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "zap contributors" }]
+keywords = ["uninstaller", "appzapper", "cleanup", "macos", "cli", "agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/waltspence/stripapp"
+Repository = "https://github.com/waltspence/stripapp"
+
+[project.scripts]
+zap = "zap.cli:main"
+
+[tool.setuptools]
+packages = ["zap", "zap.core", "zap.platforms"]
+
+[tool.setuptools.package-data]
+zap = ["py.typed"]
