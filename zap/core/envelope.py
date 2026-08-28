@@ -40,6 +40,25 @@ ERROR_EXIT = {
 }
 
 
+# Reverse map for envelopes that carry a non-zero exit without a raised error.
+EXIT_ERROR_CODE = {
+    EXIT_ERROR: "internal_error",
+    EXIT_USAGE: "usage_error",
+    EXIT_APP_NOT_FOUND: "app_not_found",
+    EXIT_NOTHING: "nothing_to_remove",
+    EXIT_PARTIAL: "partial_failure",
+    EXIT_BLOCKED: "blocked_by_safety",
+    EXIT_CONFIRMATION: "confirmation_required",
+    EXIT_AMBIGUOUS: "ambiguous_selector",
+    EXIT_LOCKED: "locked",
+}
+EXIT_MESSAGES = {
+    EXIT_NOTHING: "nothing was removed or restored",
+    EXIT_PARTIAL: "some artifacts failed, drifted, or were blocked",
+    EXIT_BLOCKED: "every selected artifact was blocked by the safety guard",
+}
+
+
 class ZapError(Exception):
     """A user-facing error carrying a stable code, message, and details."""
 

@@ -95,8 +95,11 @@ class PlanCannotTouchOtherApps(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 cli.main(["--json", "uninstall", "--plan", str(pf), "--yes"], env=env)
             self.assertTrue(victim.exists(), f"{victim_name} was removed via another app's plan")
-            results = json.loads(buf.getvalue())["data"]["results"]
-            self.assertEqual(results[0]["status"], "blocked")
+            out = json.loads(buf.getvalue())
+            # The foreign path is not attributed by a fresh scan, so the plan
+            # entry is reported stale and nothing is acted on.
+            self.assertEqual(out["data"]["results"], [])
+            self.assertTrue(any(n["code"] == "plan_stale_ids" for n in out["data"]["selection_notes"]))
 
     def test_protected_apple_app(self):
         self._run("Calculator", "com.apple.calculator")

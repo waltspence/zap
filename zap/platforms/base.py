@@ -18,6 +18,7 @@ from ..environment import Environment
 class ResolveResult:
     app: Optional[App]
     candidates: List[App]  # populated when the selector is ambiguous
+    fuzzy: bool = False  # matched only by substring, never exact
 
     @property
     def ambiguous(self) -> bool:
@@ -84,7 +85,7 @@ class Backend:
             or (a.display_name and nt in I.normalize_casefold(a.display_name))
         ]
         if len(subs) == 1:
-            return ResolveResult(subs[0], [])
+            return ResolveResult(subs[0], [], fuzzy=True)
         if len(subs) > 1:
             return ResolveResult(None, sorted(subs, key=lambda a: str(a.path)))
 

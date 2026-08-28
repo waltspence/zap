@@ -255,10 +255,13 @@ class Artifact:
     @classmethod
     def from_dict(cls, d: dict) -> "Artifact":
         fp = d.get("fingerprint")
+        m = d.get("match", {})
+        if isinstance(m, str):  # compact shape: match key + confidence side by side
+            m = {"key": m, "value": "", "confidence": d.get("confidence", CONFIDENCE_HEURISTIC)}
         return cls(
             path=Path(d["path"]),
             category=d.get("category", CAT_OTHER),
-            match=Match.from_dict(d.get("match", {})),
+            match=Match.from_dict(m),
             risk=d.get("risk", RISK_NORMAL),
             size_bytes=int(d.get("size_bytes", 0)),
             item_count=int(d.get("item_count", 1)),
@@ -398,6 +401,10 @@ def _cap_dropped(warning: dict, max_items: Optional[int]) -> dict:
     out["items_truncated"] = len(items) - max_items
     out["message"] = out.get("message", "") + f" (showing {max_items}; write the plan with -o for the full list)"
     return out
+
+
+# The pseudo-app identifier used by ``zap orphans`` plans.
+ORPHANS_IDENTIFIER = "orphans"
 
 
 # Status values for a per-artifact action result.

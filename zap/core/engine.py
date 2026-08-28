@@ -47,6 +47,7 @@ from .models import (
     Artifact,
     Fingerprint,
     Match,
+    ORPHANS_IDENTIFIER,
     Plan,
     artifact_id_for,
 )
@@ -402,6 +403,12 @@ class Engine:
                     self._res(art, STATUS_BLOCKED, f"belongs to another installed app ({owner})", method)
                 )
                 continue
+            inside = self._contained_app(path, foreign_apps)
+            if inside is not None:
+                report.results.append(
+                    self._res(art, STATUS_BLOCKED, f"contains another installed app ({inside})", method)
+                )
+                continue
             # 3) existence
             if not os.path.lexists(path):
                 report.results.append(self._res(art, STATUS_SKIPPED, "already gone", method))
@@ -453,8 +460,17 @@ class Engine:
                 return ident
         return None
 
+    def _contained_app(self, path: Path, foreign: List[Tuple[str, str]]) -> Optional[str]:
+        """Identifier of an installed app that lives *beneath* ``path``."""
+        p = self._casekey(os.path.normpath(os.path.abspath(str(path))))
+        for bundle, ident in foreign:
+            if bundle.startswith(p + os.sep):
+                return ident
+        return None
+
     def _casekey(self, s: str) -> str:
-        return s.casefold() if self.env.is_darwin else s
+        # APFS/HFS+ are case- and normalization-insensitive: NFC + casefold.
+        return I.normalize_casefold(s) if self.env.is_darwin else s
 
     def _journal(self, writer, art, location, method, reversible, info=None) -> None:
         if writer is not None:
@@ -548,7 +564,7 @@ class Engine:
                     )
                 )
         artifacts.sort(key=lambda a: str(a.path))
-        app = App(name="orphans", identifier="orphans", path=self.env.home)
+        app = App(name=ORPHANS_IDENTIFIER, identifier=ORPHANS_IDENTIFIER, path=self.env.home)
         return Plan(
             app=app,
             artifacts=artifacts,

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,9 +26,24 @@ def _history_dir(env: Environment) -> Path:
     return env.state_home / "history"
 
 
+_OPERATION_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}(-[0-9]+)?$")
+
+
+def is_valid_operation_id(value: str) -> bool:
+    return bool(value) and bool(_OPERATION_ID_RE.match(value))
+
+
 def make_operation_id(env: Environment, app_identifier: str, created_at: str) -> str:
+    """Timestamp + short hash; a numeric suffix keeps same-second runs apart."""
     stamp = created_at.replace(":", "").replace("-", "").replace("T", "-").rstrip("Z")
-    return f"{stamp}-{content_id(app_identifier + created_at, 8)}"
+    base = f"{stamp}-{content_id(app_identifier + created_at, 8)}"
+    d = _history_dir(env)
+    candidate = base
+    n = 1
+    while (d / f"{candidate}.jsonl").exists():
+        n += 1
+        candidate = f"{base}-{n}"
+    return candidate
 
 
 @dataclass
@@ -74,7 +90,8 @@ class ManifestWriter:
 
     def __enter__(self) -> "ManifestWriter":
         fsutil.ensure_dir(self.path.parent)
-        self._fh = open(self.path, "a", encoding="utf-8")
+        fsutil.chown_to_user(self.env, self.path.parent)
+        self._fh = open(self.path, "x", encoding="utf-8")
         fsutil.chown_to_user(self.env, self.path)
         self._write({"type": "header", **self._header})
         return self
@@ -127,23 +144,36 @@ class Operation:
 
 
 def read_operation(env: Environment, operation_id: str) -> Optional[Operation]:
+    if not is_valid_operation_id(operation_id):
+        return None
     path = _history_dir(env) / f"{operation_id}.jsonl"
     if not path.is_file():
         return None
     header: dict = {}
     records: List[ManifestRecord] = []
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
             obj = json.loads(line)
-            kind = obj.get("type")
-            if kind == "header":
-                header = {k: v for k, v in obj.items() if k != "type"}
-            elif kind == "record":
+        except ValueError:
+            # A torn line from a crash mid-write; every complete record before
+            # it is still restorable, so keep going rather than lose the op.
+            continue
+        kind = obj.get("type")
+        if kind == "header":
+            header = {k: v for k, v in obj.items() if k != "type"}
+        elif kind == "record":
+            try:
                 records.append(ManifestRecord.from_dict(obj))
-    except (OSError, ValueError):
+            except (KeyError, TypeError, ValueError):
+                continue
+    if not header and not records:
         return None
     return Operation(operation_id=operation_id, header=header, records=records)
 

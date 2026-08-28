@@ -54,7 +54,7 @@ class MacBackend(Backend):
 
     # -- helpers ----------------------------------------------------------
 
-    def _find_bundles(self, root: Path, max_depth: int = 2) -> List[Path]:
+    def _find_bundles(self, root: Path, max_depth: int = 6) -> List[Path]:
         """Collect ``*.app`` bundles under ``root`` without descending into them."""
         out: List[Path] = []
         if not root.is_dir():
@@ -72,7 +72,7 @@ class MacBackend(Backend):
                 if entry.name.endswith(".app"):
                     out.append(Path(entry.path))
                     continue  # never descend into a bundle
-                if depth < max_depth and not entry.name.startswith("."):
+                if depth < max_depth:
                     stack.append((Path(entry.path), depth + 1))
         return out
 

@@ -39,7 +39,7 @@ class CompactJson(unittest.TestCase):
                 [(a["id"], a["auto_selected"]) for a in full["data"]["artifacts"]],
             )
 
-    def test_output_file_stays_full_and_compact_plan_is_refused(self):
+    def test_output_file_stays_full_and_compact_plan_replays(self):
         with TempTree() as root:
             build_widget_tree(root)
             env = darwin_env(root)
@@ -49,13 +49,14 @@ class CompactJson(unittest.TestCase):
             self.assertFalse(written["compact"])
             self.assertIn("fingerprint", written["artifacts"][0])
             Plan.from_dict(written)
-            # A compact payload saved by hand cannot be replayed.
+            # A compact payload is a valid selection: same ids, same auto_selected.
             _, compact = run(["--json", "--compact", "scan", "Widget"], env)
             cf = root / "compact.json"
             cf.write_text(json.dumps(compact))
+            (env.home / ".Trash").mkdir(exist_ok=True)
             rc, out = run(["--json", "uninstall", "--plan", str(cf), "--yes"], env)
-            self.assertEqual(out["error"]["code"], "usage_error")
-            self.assertTrue((root / "Applications" / "Widget.app").exists())
+            self.assertEqual(rc, 0, out.get("error"))
+            self.assertFalse((root / "Applications" / "Widget.app").exists())
 
     def test_summary_omits_removed_results(self):
         with TempTree() as root:

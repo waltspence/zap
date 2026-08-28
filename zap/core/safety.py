@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from ..environment import Environment
+from .identifiers import normalize_casefold
 
 
 class SafetyGuard:
@@ -35,6 +36,7 @@ class SafetyGuard:
         # is still a valid boundary (we compare lexically against it), but we
         # also keep a realpath'd copy for symlink-escape checks.
         self._home = Path(os.path.normpath(os.path.abspath(str(env.home))))
+        self._state_home = Path(os.path.normpath(os.path.abspath(str(env.state_home))))
         self._real_home = Path(os.path.realpath(str(self._home)))
         self._roots: List[Path] = []
         seen = set()
@@ -69,6 +71,10 @@ class SafetyGuard:
         # Never the filesystem root or a bare top-level directory.
         if len(parts) <= 2:
             return False, "path is too shallow to be an app artifact"
+
+        # zap's own history and lock live under a catalog root; never target them.
+        if self._within(candidate, self._state_home) or self._within(self._state_home, candidate):
+            return False, "path is zap's own state directory"
 
         # Find the allow-listed root this candidate claims to live under,
         # comparing lexically first (fast, and independent of what exists).
@@ -127,7 +133,7 @@ class SafetyGuard:
     # -- helpers -----------------------------------------------------------
 
     def _casekey(self, s: str) -> str:
-        return s.casefold() if self._case_insensitive else s
+        return normalize_casefold(s) if self._case_insensitive else s
 
     def _lexical_root_for(self, candidate: Path) -> Optional[Path]:
         best: Optional[Path] = None
