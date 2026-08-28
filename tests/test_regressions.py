@@ -12,7 +12,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tests.util import TempTree
+from tests.util import TempTree, make_app_bundle
 from zap import cli
 from zap.core import catalog as C
 from zap.core import history
@@ -62,6 +62,65 @@ class PlanFileCannotWidenRoots(unittest.TestCase):
             rc = cli.main(["--json", "uninstall", "--plan", str(pf), "--yes"], env=env)
             self.assertTrue(victim.exists(), "a crafted plan trashed a path outside the catalog roots")
             self.assertNotEqual(rc, 0)
+
+
+class PlanCannotTouchOtherApps(unittest.TestCase):
+    """A plan for app A must never remove app B's bundle, protected or not."""
+
+    def _run(self, victim_name, victim_id):
+        with TempTree() as root:
+            env = _env(root)
+            apps = root / "Applications"
+            make_app_bundle(apps, "Innocent", "com.acme.Innocent")
+            victim = make_app_bundle(apps, victim_name, victim_id)
+            (env.home / ".Trash").mkdir()
+            eng = Engine(env)
+            innocent = eng.resolve("com.acme.Innocent").app
+            plan = Plan(
+                app=innocent,
+                artifacts=[
+                    Artifact(
+                        path=victim, category="other",
+                        match=Match("bundle_id", "x", "exact"), risk="normal",
+                        auto_selected=True, fingerprint=Fingerprint.of(victim),
+                    )
+                ],
+                created_at="", schema_version=1, zap_version="0",
+            )
+            pf = root / "plan.json"
+            pf.write_text(json.dumps(plan.to_dict()))
+            import contextlib
+            import io
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.main(["--json", "uninstall", "--plan", str(pf), "--yes"], env=env)
+            self.assertTrue(victim.exists(), f"{victim_name} was removed via another app's plan")
+            results = json.loads(buf.getvalue())["data"]["results"]
+            self.assertEqual(results[0]["status"], "blocked")
+
+    def test_protected_apple_app(self):
+        self._run("Calculator", "com.apple.calculator")
+
+    def test_third_party_sibling(self):
+        self._run("Other", "com.other.Thing")
+
+
+class AmbiguousIdentifierPlanBindsByPath(unittest.TestCase):
+    def test_same_app_in_two_roots(self):
+        with TempTree() as root:
+            env = _env(root)
+            make_app_bundle(root / "Applications", "Widget", "com.acme.Widget")
+            second = make_app_bundle(env.home / "Applications", "Widget", "com.acme.Widget")
+            (env.home / ".Trash").mkdir()
+            import contextlib
+            import io
+            pf = root / "plan.json"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["scan", str(second), "-o", str(pf)], env=env), 0)
+                rc = cli.main(["--json", "uninstall", "--plan", str(pf), "--yes"], env=env)
+            self.assertEqual(rc, 0)
+            self.assertFalse(second.exists())
+            self.assertTrue((root / "Applications" / "Widget.app").exists())
 
 
 class VendorDirDedupe(unittest.TestCase):

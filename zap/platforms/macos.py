@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from ..core import catalog as C
 from ..core import identifiers as I
-from ..core import plist
+from ..core import codesign, plist
 from ..core.models import App
 from .base import Backend
 
@@ -23,6 +23,11 @@ _EMBEDDED_GLOBS = [
     ("Contents/Library/LaunchServices", ("",)),
     ("Contents/Frameworks", (".framework",)),
 ]
+
+# launchd plists shipped inside the bundle (SMAppService / SMJobBless helpers).
+# Their ``Label`` is the id the installed copy in ~/Library/LaunchAgents or
+# /Library/LaunchDaemons is named by.
+_EMBEDDED_LAUNCHD = ("Contents/Library/LaunchAgents", "Contents/Library/LaunchDaemons")
 
 
 class MacBackend(Backend):
@@ -90,7 +95,7 @@ class MacBackend(Backend):
             bundle_id=bundle_id,
             display_name=display if isinstance(display, str) else None,
             executable=executable if isinstance(executable, str) else None,
-            team_id=None,  # not available without inspecting the code signature
+            team_id=codesign.team_id_for_bundle(app_path),
             version=str(version) if version is not None else None,
             embedded_bundle_ids=embedded,
             protected=protected,
@@ -126,6 +131,20 @@ class MacBackend(Backend):
                     if k not in seen:
                         seen.add(k)
                         out.append(bid)
+        for sub in _EMBEDDED_LAUNCHD:
+            d = app_path / sub
+            if not d.is_dir():
+                continue
+            for plist_path in sorted(d.glob("*.plist")):
+                label = plist.read_plist(plist_path).get("Label")
+                if not isinstance(label, str) or not I.is_valid_bundle_id(label):
+                    continue
+                if main_id and I.normalize_casefold(label) == I.normalize_casefold(main_id):
+                    continue
+                k = I.normalize_casefold(label)
+                if k not in seen:
+                    seen.add(k)
+                    out.append(label)
         return out
 
 

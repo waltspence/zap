@@ -202,8 +202,15 @@ def _verify_plan_app(ctx: Context, plan: Plan):
     could name an arbitrary directory as the "app".
     """
     claimed = plan.app
+    claimed_path = os.path.normpath(os.path.abspath(str(claimed.path)))
     res: ResolveResult = ctx.engine.resolve(claimed.identifier)
     live = res.app
+    if live is None and res.ambiguous:
+        # Same id installed in two places: bind by the plan's path.
+        for cand in res.candidates:
+            if os.path.normpath(os.path.abspath(str(cand.path))) == claimed_path:
+                live = cand
+                break
     if live is None:
         raise ZapError(
             "plan_app_mismatch",
@@ -211,7 +218,6 @@ def _verify_plan_app(ctx: Context, plan: Plan):
             {"identifier": claimed.identifier},
         )
     live_path = os.path.normpath(os.path.abspath(str(live.path)))
-    claimed_path = os.path.normpath(os.path.abspath(str(claimed.path)))
     if live_path != claimed_path:
         raise ZapError(
             "plan_app_mismatch",

@@ -135,13 +135,20 @@ class Scanner:
                     yield cand, Match(key, bid, conf), shared
 
     def _id_scan(self, loc, container, inp):
+        suffixes = tuple(s for s in (loc.suffixes or ()) if s)
         for child in _iter_children(container):
-            m = matching.match_bundle_child(child, inp.keys)
+            stem = child
+            if suffixes:
+                matched = next((s for s in suffixes if child.endswith(s)), None)
+                if matched is None:
+                    continue
+                stem = child[: -len(matched)]
+            m = matching.match_bundle_child(stem, inp.keys)
             shared = False
             if m is None:
                 # try embedded ids
                 for emb in inp.embedded:
-                    em = self._embedded_bundle_match(child, emb, inp.keys)
+                    em = self._embedded_bundle_match(stem, emb, inp.keys)
                     if em is not None:
                         m, shared = em, emb.shared
                         break
@@ -291,7 +298,7 @@ class Scanner:
         # The same object can be reached by differently-cased paths on a
         # case-insensitive filesystem; collapse those onto the first id seen.
         fp = Fingerprint.of(path)
-        if fp.exists:
+        if fp.exists and fp.ino != 0:  # some FUSE/network mounts report 0 for everything
             inode = (fp.dev, fp.ino)
             prior = self._seen_inodes.get(inode)
             if prior is not None and prior != art_id:

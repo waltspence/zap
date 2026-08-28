@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
 from .. import SCHEMA_VERSION, __version__
@@ -375,6 +376,7 @@ class Engine:
         guard = self._guard(plan.app)
         trash = get_trash(self.env)
         report = ExecutionReport(operation_id=None, dry_run=dry_run, method=method)
+        foreign_apps = self._other_app_paths(plan.app)
 
         for art in sorted(selected, key=lambda a: str(a.path)):
             path = art.path
@@ -386,6 +388,13 @@ class Engine:
             ok, reason = guard.check(path)
             if not ok:
                 report.results.append(self._res(art, STATUS_BLOCKED, reason, method))
+                continue
+            # 2b) never touch another installed app's bundle (or anything in it)
+            owner = self._owning_app(path, foreign_apps)
+            if owner is not None:
+                report.results.append(
+                    self._res(art, STATUS_BLOCKED, f"belongs to another installed app ({owner})", method)
+                )
                 continue
             # 3) existence
             if not os.path.lexists(path):
@@ -420,6 +429,26 @@ class Engine:
             except Exception as exc:  # noqa: BLE001 - report, continue with the rest
                 report.results.append(self._res(art, STATUS_FAILED, str(exc), method))
         return report
+
+    def _other_app_paths(self, app: App) -> List[Tuple[str, str]]:
+        """(normalized bundle path, identifier) of every installed app except ``app``."""
+        mine = self._casekey(os.path.normpath(os.path.abspath(str(app.path))))
+        out: List[Tuple[str, str]] = []
+        for other in self.list_apps():
+            p = self._casekey(os.path.normpath(os.path.abspath(str(other.path))))
+            if p != mine:
+                out.append((p, other.identifier))
+        return out
+
+    def _owning_app(self, path: Path, foreign: List[Tuple[str, str]]) -> Optional[str]:
+        p = self._casekey(os.path.normpath(os.path.abspath(str(path))))
+        for bundle, ident in foreign:
+            if p == bundle or p.startswith(bundle + os.sep):
+                return ident
+        return None
+
+    def _casekey(self, s: str) -> str:
+        return s.casefold() if self.env.is_darwin else s
 
     def _journal(self, writer, art, location, method, reversible, info=None) -> None:
         if writer is not None:
