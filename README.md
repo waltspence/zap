@@ -66,7 +66,7 @@ Requires Python 3.9+. No third-party dependencies.
 | --- | --- |
 | `zap list` | List discovered installed apps. `--all` includes protected system apps. |
 | `zap scan <app>` | Find the app and everything attributed to it. Read-only. |
-| `zap uninstall <app>` | Remove the app (dry-run unless `--yes`; Trash unless `--purge`). |
+| `zap uninstall <app>` | Remove the app (dry-run unless `--yes`; Trash unless `--purge --confirm-purge`). |
 | `zap orphans` | Find bundle-id-named leftovers whose owning app is gone. |
 | `zap history` | List past uninstall operations. |
 | `zap undo <id>` | Restore a past operation from the Trash. |
@@ -86,6 +86,19 @@ By default only high-confidence artifacts are acted on. Widen or narrow with:
   (comma-separated; ids come from `scan`).
 - `--include-system` — also act on system-level artifacts that need root.
 
+`--include-low` implies `--aggressive`. The full table of what each tier
+auto-selects (decided in exactly one place, `Engine._apply_selection_tiers`):
+
+| Artifact | default | `--aggressive` | `--include-low` |
+| --- | --- | --- | --- |
+| The app bundle itself (not root-owned) | yes | yes | yes |
+| Exact match keyed by bundle id (Caches, Preferences, Containers, ByHost, plug-ins) | yes | yes | yes |
+| Derived: bundle-id prefix, Team-ID prefix, vendor folder, embedded helper | no | yes | yes |
+| Heuristic: name-only | no | no | yes |
+| Shared (Group Containers, Keystone/Sparkle/AutoUpdate) | never | never | never |
+| Needs root (`/Library`, receipts, daemons) | never (see `--include-system`) | | |
+| Kernel / system extensions | never removed | | |
+
 ## Using zap from an agent
 
 ```bash
@@ -104,7 +117,7 @@ zap --json uninstall --plan plan.json --only "a1b2c3d4e5f60718,4f5e6d7c8b9a0b1c"
 
 ```json
 {
-  "zap_version": "0.1.0",
+  "zap_version": "0.2.0",
   "schema_version": 1,
   "command": "scan",
   "ok": true,
@@ -114,11 +127,28 @@ zap --json uninstall --plan plan.json --only "a1b2c3d4e5f60718,4f5e6d7c8b9a0b1c"
 }
 ```
 
+**Smaller output.** `--json --compact` drops fingerprints and per-item notes
+(about half the bytes per artifact); ids and `auto_selected` are identical to
+the full form, so `--only`/`--except` ids from a compact scan replay fine.
+`uninstall --summary` returns counts plus only the results that need
+attention (blocked, drifted, failed, skipped). Guard-rejected near-misses in
+`warnings[dropped_by_safety].items` are capped at 20 on stdout; a plan written
+with `-o` keeps the full list.
+
 **Guarantees for automation.** Under `--json`, `zap` never prompts and never
 reads stdin, arrays are totally ordered, byte counts are integers, and
 timestamps are RFC3339 UTC. A saved plan is re-validated at apply time: every
 path is re-checked by the safety guard and re-fingerprinted, and anything that
 changed since the scan is reported `drifted` rather than deleted.
+
+**Trusting plan files.** A plan is untrusted input — it may have been written
+by a model. Before anything is touched, `--plan` re-resolves `app.identifier`
+against the installed apps and requires the same path (`plan_app_mismatch`
+otherwise, exit 6); protected system apps are refused; every artifact must
+sit under a catalog root *and* outside every other installed app's bundle;
+and compact plans (no fingerprints) are refused because drift cannot be
+detected. Write plans with `zap scan <app> -o plan.json`, never with
+`--compact`.
 
 **Exit codes** (also `error.code`, 1:1):
 
@@ -130,8 +160,8 @@ changed since the scan is reported `drifted` rather than deleted.
 | 3 | app not found |
 | 4 | nothing to remove |
 | 5 | partial failure (some artifacts failed) |
-| 6 | blocked by safety (protected app) |
-| 7 | confirmation required |
+| 6 | blocked by safety (protected app, or `plan_app_mismatch`) |
+| 7 | confirmation required (`--purge --yes` without `--confirm-purge`) |
 | 8 | ambiguous selector (see `data.candidates`) |
 | 9 | locked (another zap operation is running) |
 
@@ -141,9 +171,10 @@ Each candidate is classified by how strongly it belongs to the app:
 
 - **exact** — a full bundle-id (or receipt) match at a bundle-id-keyed location.
   Only these are auto-selected.
-- **derived** — a dot-boundary bundle-id prefix, a team-id-prefixed cache, an
-  embedded helper id, or a vendor/product folder derived from the bundle-id
-  domain. Shown, but selected only with `--aggressive`.
+- **derived** — a dot-boundary bundle-id prefix, a Team-ID-prefixed cache or
+  group container, an embedded helper/launchd label, or a vendor/product folder
+  derived from the bundle-id domain. Shown, but selected only with
+  `--aggressive`.
 - **heuristic** — a display/product-name match. Shown, selected only with
   `--include-low`.
 
@@ -154,32 +185,45 @@ never removed**.
 
 ## Safety model
 
-- Removal is a dry-run unless `--yes`; Trash unless `--purge`; `--purge` is
-  refused for shared and system artifacts.
+- Removal is a dry-run unless `--yes`; Trash unless `--purge`; `--purge --yes`
+  additionally needs `--confirm-purge` and is refused for shared and system
+  artifacts.
+- An artifact inside *another* installed app's bundle is always blocked, so
+  no plan can reach a sibling or a protected system app.
 - The Trash lives on the *same volume* as each item (XDG `.Trash-<uid>` /
   macOS `.Trashes`), so moves are atomic; cross-device moves copy-verify-then
   -delete and never unlink the source before the copy is durable.
 - Every removal is journaled incrementally (flushed + fsync'd per item) so a
   crash still leaves everything recoverable.
 - A path is removed only if, after canonicalizing its parent, it sits strictly
-  inside an allow-listed root — the same roots the catalog searches.
+  inside an allow-listed root — the same roots the catalog searches — and, for
+  anything under `$HOME`, resolves under the real `$HOME` (a catalog directory
+  that is itself a symlink elsewhere cannot be used to reach out).
+- Under `sudo`, trash directories and history use the invoking user's uid so
+  `zap undo` works without root afterwards.
 
 ## Platform support
 
-- **macOS** — reads `Info.plist` (including binary plists) for bundle ids, walks
-  embedded LoginItems/XPCServices/PlugIns/Helpers/Frameworks to find helper and
-  updater ids, and searches the full `~/Library` + `/Library` catalog plus
-  installer receipts.
+- **macOS** — reads `Info.plist` (including binary plists) for bundle ids,
+  reads the Team ID straight out of the Mach-O code signature (no `codesign`
+  subprocess), walks embedded LoginItems/XPCServices/PlugIns/Helpers/Frameworks
+  and bundled LaunchAgents/LaunchDaemons to find helper, updater and launchd
+  ids, and searches the full `~/Library` + `/Library` catalog plus installer
+  receipts.
 - **Linux** — discovers apps from `.desktop` entries, Flatpak, and Snap; searches
-  `~/.config`, `~/.cache`, `~/.local/share`, `~/.local/state`, `~/.var/app`
-  (Flatpak), and `~/snap`, with reserved session/desktop directories protected
-  from name matching.
+  `~/.config`, `~/.cache`, `~/.local/share` (by name, by reverse-DNS id, and by
+  vendor/product folder), `~/.local/state`, `~/.var/app` and Flatpak overrides,
+  and `~/snap`, with reserved session/desktop directories protected from name
+  matching.
 
 ## Development
 
 ```
-python -m unittest discover -s tests
+pip install -e ".[dev]"
+make check        # ruff + mypy + pytest
 ```
+
+CI runs the suite on macOS and Ubuntu with Python 3.9 and 3.12.
 
 The whole engine is built around an injected `Environment` (filesystem roots,
 clock, device map), so macOS behavior is fully unit-tested on Linux against

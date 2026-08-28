@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zap-uninstaller"
-version = "0.1.0"
+version = "0.2.0"
 description = "A terminal-native, agent-friendly app uninstaller — finds and removes an app plus all of its leftover files. Cross-platform (macOS + Linux), zero dependencies."
 readme = "README.md"
 requires-python = ">=3.9"
