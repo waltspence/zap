@@ -75,6 +75,7 @@ class Scanner:
         found: Dict[str, Tuple[Artifact, str]] = {}  # id -> (artifact, confidence)
         dropped: List[dict] = []
         warnings: List[dict] = []
+        self._seen_inodes: Dict[Tuple[int, int], str] = {}  # (dev, ino) -> artifact id
 
         for loc in locations:
             container = self.env.resolve(loc.base, *[s for s in loc.container.split("/") if s])
@@ -222,12 +223,16 @@ class Scanner:
         if not procnames:
             return
         for child in _iter_children(container):
-            base = child
-            for sep in ("_", "-"):
-                if sep in base:
-                    base = base.split(sep)[0]
-                    break
-            if I.normalize_casefold(base) in procnames:
+            folded = I.normalize_casefold(child)
+            # Crash reports are "<Process>_<date>.crash" or "<Process>-<date>.ips".
+            # Match the longest known process name that is followed by a
+            # separator, so hyphenated names are not split at their own hyphen.
+            hit = any(
+                folded.startswith(name) and len(folded) > len(name) and folded[len(name)] in "_-"
+                for name in procnames
+                if name
+            )
+            if hit:
                 yield container / child, Match("process_name", child, CONFIDENCE_HEURISTIC), False
 
     def _bundle_scan(self, loc, container, inp):
@@ -283,6 +288,17 @@ class Scanner:
             return
 
         art_id = artifact_id_for(path)
+        # The same object can be reached by differently-cased paths on a
+        # case-insensitive filesystem; collapse those onto the first id seen.
+        fp = Fingerprint.of(path)
+        if fp.exists:
+            inode = (fp.dev, fp.ino)
+            prior = self._seen_inodes.get(inode)
+            if prior is not None and prior != art_id:
+                art_id = prior
+                path = found[prior][0].path
+            else:
+                self._seen_inodes[inode] = art_id
         existing = found.get(art_id)
         if existing is not None:
             _, prev_conf = existing
@@ -317,7 +333,7 @@ class Scanner:
             reversible=not never_remove,
             requires_root=requires_root,
             auto_selected=auto,
-            fingerprint=Fingerprint.of(path),
+            fingerprint=fp,
             notes=notes,
         )
         found[art_id] = (art, match.confidence)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import List, Optional, Set
@@ -190,10 +191,44 @@ def _load_plan(spec: str) -> Plan:
     return Plan.from_dict(obj)
 
 
+def _verify_plan_app(ctx: Context, plan: Plan):
+    """A plan file is untrusted input: bind it back to a discovered app.
+
+    The plan's ``app`` must resolve (by identifier) to an installed app at the
+    same path, and that app must not be protected. Otherwise a fabricated plan
+    could name an arbitrary directory as the "app".
+    """
+    claimed = plan.app
+    res: ResolveResult = ctx.engine.resolve(claimed.identifier)
+    live = res.app
+    if live is None:
+        raise ZapError(
+            "plan_app_mismatch",
+            f"plan names '{claimed.identifier}', which is not an installed app.",
+            {"identifier": claimed.identifier},
+        )
+    live_path = os.path.normpath(os.path.abspath(str(live.path)))
+    claimed_path = os.path.normpath(os.path.abspath(str(claimed.path)))
+    if live_path != claimed_path:
+        raise ZapError(
+            "plan_app_mismatch",
+            f"plan path for '{claimed.identifier}' does not match the installed app.",
+            {"identifier": claimed.identifier, "plan_path": claimed_path, "installed_path": live_path},
+        )
+    if live.protected:
+        raise ZapError(
+            "blocked_by_safety",
+            f"'{live.name}' is a protected system app and will not be uninstalled.",
+            {"app": live.identifier},
+        )
+    plan.app = live
+    return live
+
+
 def cmd_uninstall(ctx: Context, args) -> int:
     if args.plan:
         plan = _load_plan(args.plan)
-        app = plan.app
+        app = _verify_plan_app(ctx, plan)
     else:
         app = _resolve_or_raise(ctx, args.app)
         if app.protected:

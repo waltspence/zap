@@ -32,6 +32,7 @@ ERROR_EXIT = {
     "nothing_to_remove": EXIT_NOTHING,
     "partial_failure": EXIT_PARTIAL,
     "blocked_by_safety": EXIT_BLOCKED,
+    "plan_app_mismatch": EXIT_BLOCKED,
     "confirmation_required": EXIT_CONFIRMATION,
     "locked": EXIT_LOCKED,
     "unknown_operation": EXIT_USAGE,

@@ -1,8 +1,7 @@
 """Regression tests for the defects found in the 0.1.0 review.
 
-Each test reproduces the exact reported behaviour (not a proxy). They are
-marked ``expectedFailure`` until the fix lands; pytest reports an unexpected
-pass as a failure, so removing the fix without removing the marker is caught.
+Each test reproduces the exact reported behaviour (not a proxy), so a fix
+cannot be reverted without one of these going red.
 """
 
 from __future__ import annotations
@@ -132,10 +131,6 @@ class CrashLogNameWithSpaces(unittest.TestCase):
             self.assertTrue(any(a.category == "crash_report" for a in out.artifacts))
 
 
-for _cls in (PlanFileCannotWidenRoots, VendorDirDedupe, UndoRemovesTrashinfo, LockImportErrorPropagates, CrashLogNameWithSpaces):
-    for _name in [n for n in dir(_cls) if n.startswith("test_")]:
-        setattr(_cls, _name, unittest.expectedFailure(getattr(_cls, _name)))
-del _cls, _name
 
 
 if __name__ == "__main__":

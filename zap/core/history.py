@@ -37,6 +37,7 @@ class ManifestRecord:
     location: str  # trash path ("" for purged items)
     method: str  # "trash" | "purge"
     reversible: bool
+    info: Optional[str] = None  # XDG .trashinfo path, if the backend wrote one
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +46,7 @@ class ManifestRecord:
             "location": self.location,
             "method": self.method,
             "reversible": self.reversible,
+            "info": self.info,
         }
 
     @classmethod
@@ -55,6 +57,7 @@ class ManifestRecord:
             location=d.get("location", ""),
             method=d.get("method", "trash"),
             reversible=bool(d.get("reversible", d.get("method") == "trash")),
+            info=d.get("info"),
         )
 
 
@@ -171,7 +174,7 @@ def undo_operation(env: Environment, operation_id: str) -> List[dict]:
             )
             continue
         try:
-            trash.restore(Path(rec.original), Path(rec.location))
+            trash.restore(Path(rec.original), Path(rec.location), rec.info)
             results.append({"original": rec.original, "status": "restored"})
         except Exception as exc:  # noqa: BLE001 - report, never abort the rest
             results.append(
@@ -187,21 +190,23 @@ def exclusive_lock(env: Environment):
     lock_path = env.state_home / "lock"
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        import fcntl
-
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            raise LockBusy("another zap operation is in progress") from exc
+            import fcntl
+        except ImportError:  # pragma: no cover - non-POSIX fallback
+            fcntl = None  # type: ignore[assignment]
+        if fcntl is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise LockBusy("another zap operation is in progress") from exc
         try:
             yield
         finally:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            except OSError:
-                pass
-    except ImportError:  # pragma: no cover - non-POSIX fallback
-        yield
+            if fcntl is not None:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                except OSError:
+                    pass
     finally:
         os.close(fd)
 

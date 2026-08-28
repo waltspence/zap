@@ -111,11 +111,20 @@ class Engine:
 
     def _guard(self, app: Optional[App] = None) -> SafetyGuard:
         roots = build_allowed_roots(self.env, self.backend.all_roots())
-        if app is not None:
-            # Allow the app bundle/binary's own directory as a root so the
-            # bundle itself can be removed even from an unusual location.
+        if app is not None and self._app_in_application_root(app):
+            # Allow the app bundle's own directory (e.g. a subfolder of
+            # /Applications) so the bundle itself can be removed. The parent is
+            # only admitted when the app already sits under an application
+            # root — otherwise a crafted plan could name any directory as an
+            # "app" and turn its parent into an allow-listed root.
             roots.append(app.path.parent)
         return SafetyGuard(self.env, roots)
+
+    def _app_in_application_root(self, app: App) -> bool:
+        app_roots = build_allowed_roots(self.env, self.backend.application_roots())
+        probe = SafetyGuard(self.env, app_roots)
+        ok, _reason = probe.check(app.path)
+        return ok
 
     # -- scan / plan -------------------------------------------------------
 
@@ -378,7 +387,7 @@ class Engine:
                     )
                 else:
                     item = trash.trash(path)
-                    self._journal(writer, art, item.location, "trash", reversible=True)
+                    self._journal(writer, art, item.location, "trash", reversible=True, info=item.info)
                     report.results.append(
                         ActionResult(art.id, path, STATUS_REMOVED, reversible=True, method="trash", trash_path=item.location, size_bytes=art.size_bytes)
                     )
@@ -389,7 +398,7 @@ class Engine:
                 report.results.append(self._res(art, STATUS_FAILED, str(exc), method))
         return report
 
-    def _journal(self, writer, art, location, method, reversible) -> None:
+    def _journal(self, writer, art, location, method, reversible, info=None) -> None:
         if writer is not None:
             writer.record(
                 ManifestRecord(
@@ -398,6 +407,7 @@ class Engine:
                     location=location,
                     method=method,
                     reversible=reversible,
+                    info=info,
                 )
             )
 
