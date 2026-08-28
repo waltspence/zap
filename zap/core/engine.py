@@ -87,10 +87,16 @@ class ExecutionReport:
             "bytes_reclaimed": reclaimed,
         }
 
-    def to_dict(self) -> dict:
+    def to_dict(self, *, summary_only: bool = False, compact: bool = False) -> dict:
+        """``summary_only`` keeps counts plus only the results that need a
+        human's attention (anything not removed / previewed)."""
+        results = self.results
+        if summary_only:
+            results = [r for r in results if r.status not in (STATUS_REMOVED, STATUS_DRY_RUN)]
         return {
             **self.summary(),
-            "results": [r.to_dict() for r in self.results],
+            "results": [r.to_dict(compact=compact) for r in results],
+            "results_omitted": len(self.results) - len(results),
         }
 
     def has_failures(self) -> bool:

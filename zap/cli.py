@@ -37,10 +37,15 @@ from .platforms.base import ResolveResult
 from .render import Renderer
 
 
+# How many guard-rejected paths are echoed on stdout; the -o file keeps all.
+MAX_DROPPED_ON_STDOUT = 20
+
+
 class Context:
-    def __init__(self, env, as_json: bool):
+    def __init__(self, env, as_json: bool, compact: bool = False):
         self.env = env
         self.json = as_json
+        self.compact = compact
         self.engine = Engine(env)
         self.renderer = Renderer(env.is_tty)
 
@@ -57,6 +62,9 @@ class Context:
         elif human:
             sys.stdout.write(human + "\n")
         return exit_code
+
+    def plan_dict(self, plan: Plan) -> dict:
+        return plan.to_dict(compact=self.compact, max_dropped=MAX_DROPPED_ON_STDOUT)
 
     def fail(self, command: str, err: ZapError) -> int:
         if self.json:
@@ -84,6 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--version", action="version", version=f"zap {__version__}")
     p.add_argument("--json", action="store_true", help="emit one machine-readable JSON envelope")
+    p.add_argument("--compact", action="store_true",
+                   help="with --json: slim artifacts (no fingerprints/per-item notes); plan files written with -o stay full")
     sub = p.add_subparsers(dest="command")
 
     sp = sub.add_parser("list", help="list discovered installed apps")
@@ -109,6 +119,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--include-system", action="store_true", help="also act on system/root artifacts")
     sp.add_argument("--only", action="append", default=[], help="act only on these artifact ids (comma-separated)")
     sp.add_argument("--except", dest="except_", action="append", default=[], help="exclude these artifact ids")
+    sp.add_argument("--summary", action="store_true",
+                    help="with --json: report counts and only the results needing attention")
 
     sp = sub.add_parser("orphans", help="find leftover files with no installed owner")
     sp.add_argument("-o", "--output", help="write the plan JSON to this file")
@@ -144,8 +156,7 @@ def _resolve_or_raise(ctx: Context, selector: str):
         raise ZapError(
             "ambiguous_selector",
             f"'{selector}' matches {len(res.candidates)} apps; use an exact identifier.",
-            {"candidates": [a.identifier for a in res.candidates],
-             "candidate_details": [a.to_dict() for a in res.candidates]},
+            {"candidates": [{"identifier": a.identifier, "path": str(a.path)} for a in res.candidates]},
         )
     raise ZapError("app_not_found", f"no installed app matches '{selector}'.", {"selector": selector})
 
@@ -162,13 +173,13 @@ def cmd_scan(ctx: Context, args) -> int:
     app = _resolve_or_raise(ctx, args.app)
     plan = ctx.engine.scan(app, aggressive=args.aggressive, include_low=args.include_low)
     _maybe_write_plan(args, plan)
-    return ctx.ok("scan", plan.to_dict(), warnings=plan.warnings, human=ctx.renderer.plan(plan, title="Scan"))
+    return ctx.ok("scan", ctx.plan_dict(plan), warnings=plan.warnings, human=ctx.renderer.plan(plan, title="Scan"))
 
 
 def cmd_orphans(ctx: Context, args) -> int:
     plan = ctx.engine.orphans()
     _maybe_write_plan(args, plan)
-    return ctx.ok("orphans", plan.to_dict(), human=ctx.renderer.plan(plan, title="Orphans"))
+    return ctx.ok("orphans", ctx.plan_dict(plan), human=ctx.renderer.plan(plan, title="Orphans"))
 
 
 def _maybe_write_plan(args, plan: Plan) -> None:
@@ -191,6 +202,12 @@ def _load_plan(spec: str) -> Plan:
         obj = obj["data"]
     if not isinstance(obj, dict) or "artifacts" not in obj:
         raise ZapError("usage_error", "file does not contain a zap plan.")
+    if obj.get("compact") or any("fingerprint" not in a for a in obj["artifacts"]):
+        raise ZapError(
+            "usage_error",
+            "this is a compact plan (no fingerprints) and cannot be replayed; "
+            "re-run `zap scan <app> -o <file>` to write a full plan.",
+        )
     return Plan.from_dict(obj)
 
 
@@ -288,7 +305,7 @@ def cmd_uninstall(ctx: Context, args) -> int:
     data = {
         "app": app.to_dict(),
         "plan_id": plan.plan_id,
-        **report.to_dict(),
+        **report.to_dict(summary_only=bool(args.summary), compact=ctx.compact),
         "selection_notes": notes,
     }
     warnings = list(plan.warnings)
@@ -375,7 +392,7 @@ def main(argv: Optional[List[str]] = None, env=None) -> int:
 
     if env is None:
         env = current_environment()
-    ctx = Context(env, as_json=bool(args.json))
+    ctx = Context(env, as_json=bool(args.json), compact=bool(args.compact))
     handler = HANDLERS[args.command]
     try:
         return handler(ctx, args)

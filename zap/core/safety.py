@@ -10,6 +10,9 @@ both at scan time and again at execute time. The guard's contract:
   symlinked *ancestor* that escapes the root is rejected.
 * The path must be strictly deeper than the root — a root itself, ``$HOME``,
   ``/`` or any top-level directory can never be a target.
+* Anything lexically under ``$HOME`` must also *resolve* under the real
+  ``$HOME``, so a catalog root that is itself a symlink out of the home
+  directory cannot be used to reach elsewhere.
 
 The allow-listed roots are derived from the very same catalog used for
 discovery, so the guard and the discovery layer cannot drift apart.
@@ -31,6 +34,8 @@ class SafetyGuard:
         # De-duplicate and resolve roots up front. A root that does not exist
         # is still a valid boundary (we compare lexically against it), but we
         # also keep a realpath'd copy for symlink-escape checks.
+        self._home = Path(os.path.normpath(os.path.abspath(str(env.home))))
+        self._real_home = Path(os.path.realpath(str(self._home)))
         self._roots: List[Path] = []
         seen = set()
         for r in allowed_roots:
@@ -88,6 +93,12 @@ class SafetyGuard:
             real_parent, root
         ):
             return False, "resolved parent escapes the allow-listed root (symlink?)"
+
+        # The root itself may be a symlink (~/Library/Logs -> /Volumes/X). Then
+        # the check above is vacuous, so additionally require anything under
+        # the home directory to *resolve* under the real home directory.
+        if self._within(candidate, self._home) and not self._within(real_parent, self._real_home):
+            return False, "resolved parent leaves the home directory (symlinked ancestor)"
 
         return True, None
 

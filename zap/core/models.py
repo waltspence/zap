@@ -214,7 +214,28 @@ class Artifact:
     def id(self) -> str:
         return artifact_id_for(self.path)
 
-    def to_dict(self) -> dict:
+    def to_dict(self, *, compact: bool = False) -> dict:
+        """Full shape by default; ``compact`` drops what only a ``--plan``
+        round-trip needs (fingerprint, per-item notes, item_count) and any
+        flag that is at its default, so an agent reads only what matters."""
+        if compact:
+            d: dict = {
+                "id": self.id,
+                "path": str(self.path),
+                "category": self.category,
+                "match": self.match.key,
+                "confidence": self.match.confidence,
+                "risk": self.risk,
+                "size_bytes": int(self.size_bytes),
+                "auto_selected": self.auto_selected,
+            }
+            if self.shared:
+                d["shared"] = True
+            if self.requires_root:
+                d["requires_root"] = True
+            if not self.reversible:
+                d["reversible"] = False
+            return d
         return {
             "id": self.id,
             "path": str(self.path),
@@ -331,17 +352,28 @@ class Plan:
             "requires_root": any(a.requires_root for a in self.artifacts),
         }
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(self, *, compact: bool = False, max_dropped: Optional[int] = None) -> dict:
+        """``compact`` slims each artifact and hoists repeated notes into a
+        ``notes`` legend keyed by artifact id; ``max_dropped`` caps the
+        ``dropped_by_safety`` item list (the count is always reported)."""
+        d = {
             "plan_id": self.plan_id,
             "created_at": self.created_at,
             "schema_version": self.schema_version,
             "zap_version": self.zap_version,
+            "compact": compact,
             "app": self.app.to_dict(),
-            "artifacts": [a.to_dict() for a in self.artifacts],
+            "artifacts": [a.to_dict(compact=compact) for a in self.artifacts],
             "summary": self.summary(),
-            "warnings": list(self.warnings),
+            "warnings": [_cap_dropped(w, max_dropped) for w in self.warnings],
         }
+        if compact:
+            legend: dict = {}
+            for a in self.artifacts:
+                for note in a.notes:
+                    legend.setdefault(note, []).append(a.id)
+            d["notes"] = legend
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Plan":
@@ -353,6 +385,19 @@ class Plan:
             zap_version=d.get("zap_version", ""),
             warnings=list(d.get("warnings", [])),
         )
+
+
+def _cap_dropped(warning: dict, max_items: Optional[int]) -> dict:
+    if max_items is None or warning.get("code") != "dropped_by_safety":
+        return warning
+    items = warning.get("items") or []
+    if len(items) <= max_items:
+        return warning
+    out = dict(warning)
+    out["items"] = items[:max_items]
+    out["items_truncated"] = len(items) - max_items
+    out["message"] = out.get("message", "") + f" (showing {max_items}; write the plan with -o for the full list)"
+    return out
 
 
 # Status values for a per-artifact action result.
@@ -377,8 +422,8 @@ class ActionResult:
     size_bytes: int = 0
     reason: Optional[str] = None
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(self, *, compact: bool = False) -> dict:
+        d = {
             "id": self.id,
             "path": str(self.path),
             "status": self.status,
@@ -388,3 +433,6 @@ class ActionResult:
             "size_bytes": int(self.size_bytes),
             "reason": self.reason,
         }
+        if compact:
+            d = {k: v for k, v in d.items() if v not in (None, "")}
+        return d
