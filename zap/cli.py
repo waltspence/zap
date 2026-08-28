@@ -5,7 +5,8 @@ Design points that matter for agents:
 * ``--json`` prints exactly one envelope to stdout and never reads stdin or
   prompts, so an autonomous caller can never hang.
 * Removal is a **dry-run by default**; ``--yes`` is the only thing that makes
-  ``uninstall`` actually act, and ``--purge`` (permanent) still requires it.
+  ``uninstall`` actually act, and ``--purge`` (permanent) additionally
+  requires ``--confirm-purge``.
 * Exit codes and ``error.code`` are the stable, documented contract.
 """
 
@@ -101,6 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--yes", action="store_true", help="actually perform the removal (otherwise dry-run)")
     sp.add_argument("--dry-run", action="store_true", help="force a dry-run even with --yes")
     sp.add_argument("--purge", action="store_true", help="delete permanently instead of moving to trash")
+    sp.add_argument("--confirm-purge", action="store_true",
+                    help="required with --purge --yes: acknowledge that purged files cannot be undone")
     sp.add_argument("--aggressive", action="store_true", help="also act on derived matches")
     sp.add_argument("--include-low", action="store_true", help="also act on name-only matches")
     sp.add_argument("--include-system", action="store_true", help="also act on system/root artifacts")
@@ -241,6 +244,12 @@ def cmd_uninstall(ctx: Context, args) -> int:
 
     method = "purge" if args.purge else "trash"
     dry_run = (not args.yes) or args.dry_run
+    if method == "purge" and not dry_run and not args.confirm_purge:
+        raise ZapError(
+            "confirmation_required",
+            "--purge deletes permanently and cannot be undone; add --confirm-purge to proceed.",
+            {"required_flag": "--confirm-purge"},
+        )
 
     only = _parse_ids(args.only)
     exclude = _parse_ids(args.except_)
@@ -332,7 +341,7 @@ def cmd_capabilities(ctx: Context, args) -> int:
         "categories": sorted(M.CATEGORY_RISK.keys()),
         "defaults": {
             "removal": "dry-run unless --yes",
-            "method": "trash (recoverable) unless --purge",
+            "method": "trash (recoverable) unless --purge (which also needs --confirm-purge)",
             "auto_selected": "full-bundle-id exact matches only",
         },
     }

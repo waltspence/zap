@@ -54,6 +54,12 @@ from .scanner import Scanner
 from .trash import get_trash
 
 
+# Exact-confidence match keys that may be removed without review. Everything
+# else (prefix, name, vendor folder, embedded, group container, iCloud) is
+# shown but must be opted into with --aggressive / --include-low / --only.
+AUTO_EXACT_KEYS = frozenset({"bundle_id", "byhost", "receipt", "plugin_bundle_id"})
+
+
 def iso_now(env: Environment) -> str:
     return env.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -103,7 +109,12 @@ class Engine:
 
     def list_apps(self) -> List[App]:
         if self._apps is None:
-            self._apps = self.backend.discover_apps()
+            apps = self.backend.discover_apps()
+            guard = self._guard()
+            for app in apps:
+                if guard.is_protected_app(app.path, app.bundle_id, app.name):
+                    app.protected = True
+            self._apps = apps
         return self._apps
 
     def resolve(self, selector: str) -> ResolveResult:
@@ -210,30 +221,42 @@ class Engine:
     def _apply_selection_tiers(self, artifacts, *, aggressive: bool, include_low: bool) -> None:
         """Set ``auto_selected`` on the default action set for a plan.
 
-        Default: exact bundle-id, non-shared, non-root, removable.
-        --aggressive: also derived-confidence (prefix / vendor / embedded).
-        --include-low: also heuristic (name-only).
-        The app bundle is always in the default set (it is the whole point).
+        This is the ONLY place auto-selection is decided (``--include-low``
+        implies ``--aggressive``). The table:
+
+        ======================  =======  ============  =============
+        artifact                default  --aggressive  --include-low
+        ======================  =======  ============  =============
+        app bundle (non-root)   yes      yes           yes
+        system extension        never    never         never
+        shared / requires root  no       no            no
+        exact, AUTO_EXACT_KEYS  yes      yes           yes
+        exact, other key        no       yes           yes
+        derived                 no       yes           yes
+        heuristic               no       no            yes
+        ======================  =======  ============  =============
         """
+        # --include-low is the widest tier and implies --aggressive.
+        aggressive = aggressive or include_low
         for a in artifacts:
-            if a.category == CAT_SYSTEM_EXTENSION:
-                a.auto_selected = False
-                continue
-            if a.category == CAT_APP_BUNDLE and not a.requires_root:
-                a.auto_selected = True
-                continue
-            if a.shared or a.requires_root:
-                a.auto_selected = False
-                continue
-            conf = a.match.confidence
-            if conf == CONFIDENCE_EXACT:
-                a.auto_selected = True
-            elif conf == CONFIDENCE_DERIVED:
-                a.auto_selected = bool(aggressive)
-            elif conf == CONFIDENCE_HEURISTIC:
-                a.auto_selected = bool(include_low)
-            else:
-                a.auto_selected = False
+            a.auto_selected = self._auto_select(a, aggressive=aggressive, include_low=include_low)
+
+    @staticmethod
+    def _auto_select(a: Artifact, *, aggressive: bool, include_low: bool) -> bool:
+        if a.category == CAT_SYSTEM_EXTENSION:
+            return False
+        if a.category == CAT_APP_BUNDLE:
+            return not a.requires_root
+        if a.shared or a.requires_root:
+            return False
+        conf = a.match.confidence
+        if conf == CONFIDENCE_EXACT:
+            return a.match.key in AUTO_EXACT_KEYS or bool(aggressive)
+        if conf == CONFIDENCE_DERIVED:
+            return bool(aggressive)
+        if conf == CONFIDENCE_HEURISTIC:
+            return bool(include_low)
+        return False
 
     def _app_warnings(self, app: App, artifacts) -> List[dict]:
         out: List[dict] = []

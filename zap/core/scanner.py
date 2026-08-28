@@ -3,7 +3,7 @@
 The scanner is the bridge between the declarative :mod:`catalog` and the live
 filesystem. For each location it runs the location's strategy, classifies every
 candidate through :mod:`matching`, then annotates the survivor with size,
-fingerprint, risk, and auto-selection. Every candidate is passed through the
+fingerprint and risk (auto-selection is the engine's decision). Every candidate is passed through the
 :class:`~zap.core.safety.SafetyGuard`; rejects are not silently dropped but
 recorded on a ``dropped`` channel so an agent can see near-misses.
 """
@@ -310,9 +310,6 @@ class Scanner:
         shared_id = I.is_valid_bundle_id(match.value) and I.is_shared_component_id(match.value)
         is_shared = bool(shared or loc.shared or shared_id)
         never_remove = loc.category == CAT_SYSTEM_EXTENSION
-        auto = matching.is_auto_selectable(match, shared=is_shared, requires_root=requires_root)
-        if never_remove:
-            auto = False
 
         notes = []
         if loc.note:
@@ -332,7 +329,7 @@ class Scanner:
             shared=is_shared,
             reversible=not never_remove,
             requires_root=requires_root,
-            auto_selected=auto,
+            auto_selected=False,  # decided later by Engine._apply_selection_tiers
             fingerprint=fp,
             notes=notes,
         )

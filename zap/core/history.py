@@ -75,6 +75,7 @@ class ManifestWriter:
     def __enter__(self) -> "ManifestWriter":
         fsutil.ensure_dir(self.path.parent)
         self._fh = open(self.path, "a", encoding="utf-8")
+        fsutil.chown_to_user(self.env, self.path)
         self._write({"type": "header", **self._header})
         return self
 
@@ -166,7 +167,9 @@ def undo_operation(env: Environment, operation_id: str) -> List[dict]:
         raise FileNotFoundError(f"no such operation: {operation_id}")
     trash = get_trash(env)
     results: List[dict] = []
-    # Restore in reverse order so nested items come back before their parents.
+    # Replay in reverse order of removal. Execution sorts by path, so a parent
+    # is always trashed before anything beneath it (which then reads "already
+    # gone"); reversing simply undoes the most recent move first.
     for rec in reversed(op.records):
         if not rec.reversible or not rec.location:
             results.append(
@@ -187,8 +190,10 @@ def undo_operation(env: Environment, operation_id: str) -> List[dict]:
 def exclusive_lock(env: Environment):
     """Advisory whole-operation lock so concurrent zap runs cannot race."""
     fsutil.ensure_dir(env.state_home)
+    fsutil.chown_to_user(env, env.state_home)
     lock_path = env.state_home / "lock"
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    fsutil.chown_to_user(env, lock_path)
     try:
         try:
             import fcntl

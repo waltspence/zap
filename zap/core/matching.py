@@ -2,7 +2,7 @@
 
 The engine walks known locations and asks this module, for each candidate
 name, "is this the app's, and how sure are we?" The answers drive confidence
-(which in turn drives auto-selection). Two rules here are load-bearing for
+(auto-selection itself is decided in one place: ``Engine._apply_selection_tiers``). Two rules here are load-bearing for
 safety:
 
 * **Dot-boundary prefix only** — ``com.google.Chrome`` claims
@@ -116,36 +116,3 @@ def match_name_child(name: str, keys: AppKeys) -> Optional[Match]:
     return None
 
 
-def exact_id_match(keys: AppKeys) -> Optional[Match]:
-    """The match used for locations keyed *directly* by the full bundle id
-    (Preferences/<id>.plist, Containers/<id>, LaunchAgents/<id>.plist)."""
-    if not keys.bundle_id:
-        return None
-    return Match("bundle_id", keys.bundle_id, CONFIDENCE_EXACT)
-
-
-def embedded_id_match(embedded_id: str, keys: AppKeys) -> Optional[Match]:
-    """Match for an embedded helper/updater bundle id discovered inside the
-    app. Shared components (Keystone/Sparkle/Apple) are attributed but never
-    auto-selected (the engine marks them ``shared``)."""
-    if not I.is_valid_bundle_id(embedded_id):
-        return None
-    if _belongs_to_other_app(embedded_id, keys):
-        return None
-    return Match("embedded_bundle_id", embedded_id, CONFIDENCE_DERIVED)
-
-
-def is_auto_selectable(match: Match, *, shared: bool, requires_root: bool) -> bool:
-    """The single decision governing what gets deleted *without* review.
-
-    Only a full-bundle-id **exact** match, that is neither shared with other
-    apps nor requiring root, is auto-selected. Everything else (prefix, name,
-    vendor folder, embedded, group container, receipts) is shown but must be
-    explicitly chosen with ``--only``/``--aggressive``.
-    """
-    if shared or requires_root:
-        return False
-    return match.confidence == CONFIDENCE_EXACT and match.key in {
-        "bundle_id",
-        "receipt_exact",
-    }

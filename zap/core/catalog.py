@@ -168,7 +168,13 @@ def application_roots(system: str) -> List[Tuple[str, str]]:
             (SYS, "Applications/Setapp"),
             (HOME, "Applications"),
         ]
-    return [(SYS, "opt"), (SYS, "usr/local")]
+    return [
+        (SYS, "opt"),
+        (SYS, "usr/local"),
+        (HOME, ".local/share/flatpak/app"),
+        (SYS, "var/lib/flatpak/app"),
+        (HOME, "snap"),
+    ]
 
 
 def roots_for(locations: List[Location], system: str) -> Set[Tuple[str, str]]:
