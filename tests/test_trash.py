@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tests.util import TempTree
 from zap.core import fsutil
-from zap.core.trash import MacTrash, XDGTrash
+from zap.core.trash import MacTrash, XDGTrash, TrashError
 from zap.environment import Environment
 
 
@@ -161,7 +161,7 @@ class XDGTrashTests(unittest.TestCase):
             item = trash.trash(target)
             # user recreated a file at the original path
             target.write_text("new")
-            with self.assertRaises(Exception):
+            with self.assertRaises(TrashError):
                 trash.restore(Path(item.original), Path(item.location), item.info)
 
 

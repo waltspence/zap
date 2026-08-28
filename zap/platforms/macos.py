@@ -10,7 +10,6 @@ from ..core import catalog as C
 from ..core import identifiers as I
 from ..core import plist
 from ..core.models import App
-from ..environment import Environment
 from .base import Backend
 
 # Subpaths inside a .app bundle that hold *their own* bundle ids — the source
@@ -102,7 +101,7 @@ class MacBackend(Backend):
     def _embedded_ids(self, app_path: Path, main_id: Optional[str]) -> List[str]:
         out: List[str] = []
         seen = set()
-        for sub, exts in _EMBEDDED_GLOBS:
+        for sub, _exts in _EMBEDDED_GLOBS:
             d = app_path / sub
             if not d.is_dir():
                 continue

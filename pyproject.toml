@@ -23,6 +23,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.4", "mypy>=1.8"]
+
 [project.urls]
 Homepage = "https://github.com/waltspence/stripapp"
 Repository = "https://github.com/waltspence/stripapp"
@@ -35,3 +38,15 @@ packages = ["zap", "zap.core", "zap.platforms"]
 
 [tool.setuptools.package-data]
 zap = ["py.typed"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true

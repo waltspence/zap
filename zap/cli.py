@@ -21,10 +21,7 @@ from . import SCHEMA_VERSION, __version__
 from .core import history as history_mod
 from .core.engine import Engine
 from .core.envelope import (
-    EXIT_AMBIGUOUS,
-    EXIT_APP_NOT_FOUND,
     EXIT_ERROR,
-    EXIT_LOCKED,
     EXIT_NOTHING,
     EXIT_OK,
     EXIT_PARTIAL,
@@ -184,7 +181,7 @@ def _load_plan(spec: str) -> Plan:
     try:
         obj = json.loads(raw)
     except ValueError as exc:
-        raise ZapError("usage_error", f"could not parse plan: {exc}")
+        raise ZapError("usage_error", f"could not parse plan: {exc}") from exc
     # Accept either a bare plan dict or a full envelope wrapping one.
     if isinstance(obj, dict) and "artifacts" not in obj and isinstance(obj.get("data"), dict):
         obj = obj["data"]
@@ -236,7 +233,7 @@ def cmd_uninstall(ctx: Context, args) -> int:
     try:
         report = ctx.engine.execute(plan, selected, method=method, dry_run=dry_run)
     except history_mod.LockBusy as exc:
-        raise ZapError("locked", str(exc))
+        raise ZapError("locked", str(exc)) from exc
 
     data = {
         "app": app.to_dict(),
@@ -270,8 +267,8 @@ def cmd_history(ctx: Context, args) -> int:
 def cmd_undo(ctx: Context, args) -> int:
     try:
         results = history_mod.undo_operation(ctx.env, args.operation_id)
-    except FileNotFoundError:
-        raise ZapError("unknown_operation", f"no such operation: {args.operation_id}")
+    except FileNotFoundError as exc:
+        raise ZapError("unknown_operation", f"no such operation: {args.operation_id}") from exc
     failed = [r for r in results if r["status"] == "failed"]
     data = {"operation_id": args.operation_id, "results": results}
     code = EXIT_PARTIAL if failed else EXIT_OK

@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 from ..core import catalog as C
 from ..core import identifiers as I
 from ..core.models import App
-from ..environment import Environment
 from .base import Backend
 
 

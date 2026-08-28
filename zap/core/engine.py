@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
 from .. import SCHEMA_VERSION, __version__
@@ -22,7 +21,6 @@ from . import fsutil
 from . import identifiers as I
 from .catalog import ID_PATH, ID_SCAN
 from .history import (
-    LockBusy,
     ManifestRecord,
     ManifestWriter,
     exclusive_lock,
@@ -68,7 +66,7 @@ class ExecutionReport:
     results: List[ActionResult] = field(default_factory=list)
 
     def summary(self) -> dict:
-        counts = {}
+        counts: dict = {}
         reclaimed = 0
         for r in self.results:
             counts[r.status] = counts.get(r.status, 0) + 1

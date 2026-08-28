@@ -248,4 +248,3 @@ def vendor_product_from_bundle_id(bundle_id: str) -> Optional["tuple[str, str]"]
 
 # Imported late to avoid a hard dependency at module import for the rare
 # ``is_safe_name_component`` os.curdir check above.
-import os  # noqa: E402

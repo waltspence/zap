@@ -13,12 +13,12 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, TextIO
 
 from ..environment import Environment
 from . import fsutil
 from .models import content_id
-from .trash import TrashedItem, get_trash
+from .trash import get_trash
 
 
 def _history_dir(env: Environment) -> Path:
@@ -65,7 +65,7 @@ class ManifestWriter:
         self.env = env
         self.operation_id = operation_id
         self.path = _history_dir(env) / f"{operation_id}.jsonl"
-        self._fh = None
+        self._fh: Optional[TextIO] = None
         self._header = header
         self._records = 0
 

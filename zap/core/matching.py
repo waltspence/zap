@@ -16,7 +16,7 @@ safety:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Set
+from typing import Optional, Set
 
 from . import identifiers as I
 from .models import (

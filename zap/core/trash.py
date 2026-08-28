@@ -96,7 +96,7 @@ class Trash:
                 except FileExistsError:
                     attempt += 1
                     if attempt > 10000:
-                        raise TrashError("could not reserve a trash name")
+                        raise TrashError("could not reserve a trash name") from None
                     continue
             dst = files_dir / name
             if dst.exists() or dst.is_symlink():
