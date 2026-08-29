@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -93,25 +94,32 @@ class Backend:
 
     def make_scan_input(self, app: App, apps: List[App]) -> ScanInput:
         usable = I.usable_bundle_id(app.bundle_id)
-        names = matching.build_name_set(
-            app.name, app.display_name, app.executable, _bundle_name(app)
-        )
+        # The executable name is deliberately NOT a name key: a launcher whose
+        # Exec= is "firefox" must not claim Firefox's profile.
+        names = matching.build_name_set(app.name, app.display_name, _bundle_name(app))
         execs = {
             I.normalize_casefold(x)
             for x in (app.executable, app.name)
             if x and I.is_safe_name_component(x)
         }
-        others = {
-            a.bundle_id
-            for a in apps
-            if a.bundle_id and a is not app and I.is_valid_bundle_id(a.bundle_id)
-        }
+        same_path = os.path.normpath(os.path.abspath(str(app.path)))
+        others_apps = [
+            a for a in apps
+            if a is not app and os.path.normpath(os.path.abspath(str(a.path))) != same_path
+        ]
+        others = {a.bundle_id for a in others_apps if a.bundle_id and I.is_valid_bundle_id(a.bundle_id)}
+        other_names = set()
+        for a in others_apps:
+            other_names |= matching.build_name_set(a.name, a.display_name)
+        other_names -= names  # a second copy of *this* app shares its names
         keys = matching.AppKeys(
             bundle_id=usable,
             team_id=app.team_id if I.is_valid_team_id(app.team_id) else None,
             names=names,
             executables=execs,
             other_bundle_ids=others,
+            other_names=other_names,
+            case_insensitive=self.env.is_darwin,
         )
         embedded = []
         seen = set()
@@ -124,7 +132,12 @@ class Backend:
             if key in seen:
                 continue
             seen.add(key)
-            embedded.append(EmbeddedSource(bundle_id=eid, shared=I.is_shared_component_id(eid)))
+            # An embedded id that is another installed app (or lives in its
+            # id subtree) is that app's, not ours.
+            if matching.embedded_belongs_to_other(eid, keys):
+                continue
+            shared = I.is_shared_component_id(eid) or eid in app.shared_embedded_ids
+            embedded.append(EmbeddedSource(bundle_id=eid, shared=shared))
         return ScanInput(keys=keys, embedded=embedded)
 
 

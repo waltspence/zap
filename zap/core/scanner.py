@@ -199,8 +199,14 @@ class Scanner:
             return
         prefix = bid + "."
         for child in _iter_children(container):
-            if child.startswith(prefix) and child.endswith(".plist"):
-                yield container / child, Match("byhost", bid, CONFIDENCE_EXACT), False
+            if not (child.startswith(prefix) and child.endswith(".plist")):
+                continue
+            # ByHost files are <bundle-id>.<hardware-uuid>.plist: exactly one
+            # extra label. Anything with more dots is a dot-child sibling app.
+            rest = child[len(prefix) : -len(".plist")]
+            if not rest or "." in rest:
+                continue
+            yield container / child, Match("byhost", bid, CONFIDENCE_EXACT), False
 
     def _group_container(self, loc, container, inp):
         bid = inp.keys.bundle_id

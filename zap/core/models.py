@@ -287,6 +287,8 @@ class App:
     team_id: Optional[str] = None
     version: Optional[str] = None
     embedded_bundle_ids: List[str] = field(default_factory=list)
+    # Embedded ids that are frameworks/runtimes shared by many apps (never auto).
+    shared_embedded_ids: List[str] = field(default_factory=list)
     protected: bool = False
     degraded: bool = False  # no usable bundle id -> name-only, never auto-select
     managed_by: Optional[str] = None  # e.g. "dpkg", "flatpak", "snap", "setapp"
@@ -302,6 +304,7 @@ class App:
             "team_id": self.team_id,
             "version": self.version,
             "embedded_bundle_ids": list(self.embedded_bundle_ids),
+            "shared_embedded_ids": list(self.shared_embedded_ids),
             "protected": self.protected,
             "degraded": self.degraded,
             "managed_by": self.managed_by,
@@ -319,6 +322,7 @@ class App:
             team_id=d.get("team_id"),
             version=d.get("version"),
             embedded_bundle_ids=list(d.get("embedded_bundle_ids", [])),
+            shared_embedded_ids=list(d.get("shared_embedded_ids", [])),
             protected=bool(d.get("protected", False)),
             degraded=bool(d.get("degraded", False)),
             managed_by=d.get("managed_by"),

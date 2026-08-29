@@ -54,6 +54,8 @@ class ManifestRecord:
     method: str  # "trash" | "purge"
     reversible: bool
     info: Optional[str] = None  # XDG .trashinfo path, if the backend wrote one
+    dev: Optional[int] = None  # identity of the trashed object, verified on undo
+    ino: Optional[int] = None
 
     def to_dict(self) -> dict:
         return {
@@ -63,6 +65,8 @@ class ManifestRecord:
             "method": self.method,
             "reversible": self.reversible,
             "info": self.info,
+            "dev": self.dev,
+            "ino": self.ino,
         }
 
     @classmethod
@@ -74,6 +78,8 @@ class ManifestRecord:
             method=d.get("method", "trash"),
             reversible=bool(d.get("reversible", d.get("method") == "trash")),
             info=d.get("info"),
+            dev=d.get("dev"),
+            ino=d.get("ino"),
         )
 
 
@@ -207,6 +213,10 @@ def undo_operation(env: Environment, operation_id: str) -> List[dict]:
             )
             continue
         try:
+            if rec.ino is not None and not _same_object(Path(rec.location), rec.dev, rec.ino):
+                results.append({"original": rec.original, "status": "failed",
+                                "reason": "trashed item was replaced by a different file with the same name"})
+                continue
             trash.restore(Path(rec.original), Path(rec.location), rec.info)
             results.append({"original": rec.original, "status": "restored"})
         except Exception as exc:  # noqa: BLE001 - report, never abort the rest
@@ -214,6 +224,14 @@ def undo_operation(env: Environment, operation_id: str) -> List[dict]:
                 {"original": rec.original, "status": "failed", "reason": str(exc)}
             )
     return results
+
+
+def _same_object(path: Path, dev: Optional[int], ino: int) -> bool:
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return st.st_ino == ino and (dev is None or st.st_dev == dev)
 
 
 @contextmanager

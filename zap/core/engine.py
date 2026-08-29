@@ -62,6 +62,14 @@ from .trash import get_trash
 AUTO_EXACT_KEYS = frozenset({"bundle_id", "byhost", "receipt", "plugin_bundle_id"})
 
 
+def _identity(path: Path) -> Optional[Tuple[int, int]]:
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino)
+
+
 def iso_now(env: Environment) -> str:
     return env.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -432,7 +440,8 @@ class Engine:
                     )
                 else:
                     item = trash.trash(path)
-                    self._journal(writer, art, item.location, "trash", reversible=True, info=item.info)
+                    self._journal(writer, art, item.location, "trash", reversible=True,
+                                  info=item.info, ident=_identity(Path(item.location)))
                     report.results.append(
                         ActionResult(art.id, path, STATUS_REMOVED, reversible=True, method="trash", trash_path=item.location, size_bytes=art.size_bytes)
                     )
@@ -472,8 +481,9 @@ class Engine:
         # APFS/HFS+ are case- and normalization-insensitive: NFC + casefold.
         return I.normalize_casefold(s) if self.env.is_darwin else s
 
-    def _journal(self, writer, art, location, method, reversible, info=None) -> None:
+    def _journal(self, writer, art, location, method, reversible, info=None, ident=None) -> None:
         if writer is not None:
+            dev, ino = ident if ident else (None, None)
             writer.record(
                 ManifestRecord(
                     artifact_id=art.id,
@@ -482,6 +492,8 @@ class Engine:
                     method=method,
                     reversible=reversible,
                     info=info,
+                    dev=dev,
+                    ino=ino,
                 )
             )
 

@@ -75,7 +75,8 @@ def _safe_device(path: Path) -> int:
     p = Path(path)
     for candidate in (p, *p.parents):
         try:
-            return os.stat(candidate).st_dev
+            # lstat: a leaf symlink lives on *its own* volume, not its target's.
+            return os.lstat(candidate).st_dev
         except OSError:
             continue
     return -1
@@ -89,7 +90,7 @@ def mount_point_of(env: Environment, path: Path) -> Path:
     """
     p = Path(path)
     # Anchor to the nearest existing ancestor so a not-yet-created leaf works.
-    while not p.exists() and p != p.parent:
+    while not os.path.lexists(p) and p != p.parent:
         p = p.parent
     dev = env.device_of(p)
     top = p
