@@ -233,3 +233,18 @@ throwaway directory trees.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## GUI (optional)
+
+`zap-gui` is a stdlib-only Tkinter front-end — no extra dependencies, one file
+(`zap/gui.py`). It shells out to `zap --json`, so the CLI's safety rules,
+tiers, Trash and undo log stay in charge. Pick an app on the left, tick/untick
+what goes, **Move to Trash**; **Undo…** lists past operations to restore.
+
+```sh
+zap-gui                                   # run it
+python scripts/make_macos_app.py          # macOS: build ~/Applications/Zap.app
+```
+
+Icon: drop an `icon.gif`/`icon.png` in `~/.config/zap/` (or pass
+`--icon file.png` to the app builder) to replace the built-in bolt.

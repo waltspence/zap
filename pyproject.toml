@@ -32,6 +32,7 @@ Repository = "https://github.com/waltspence/stripapp"
 
 [project.scripts]
 zap = "zap.cli:main"
+zap-gui = "zap.gui:main"
 
 [tool.setuptools]
 packages = ["zap", "zap.core", "zap.platforms"]
