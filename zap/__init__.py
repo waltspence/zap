@@ -6,7 +6,7 @@ receipts) and removes them recoverably. Cross-platform (macOS + Linux),
 zero runtime dependencies.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Version of the machine-readable (--json) output envelope. Bump on any
 # backwards-incompatible change to the JSON schema so agents can pin it.

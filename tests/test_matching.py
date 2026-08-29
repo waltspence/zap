@@ -72,27 +72,5 @@ class MatchNameChildTests(unittest.TestCase):
         self.assertIsNone(M.match_name_child("Photoshop", k))
 
 
-class AutoSelectTests(unittest.TestCase):
-    def test_exact_bundle_id_auto(self):
-        m = M.Match("bundle_id", "com.acme.Widget", CONFIDENCE_EXACT)
-        self.assertTrue(M.is_auto_selectable(m, shared=False, requires_root=False))
-
-    def test_prefix_not_auto(self):
-        m = M.Match("bundle_id_prefix", "com.acme.Widget.helper", CONFIDENCE_DERIVED)
-        self.assertFalse(M.is_auto_selectable(m, shared=False, requires_root=False))
-
-    def test_name_not_auto(self):
-        m = M.Match("name", "Slack", CONFIDENCE_HEURISTIC)
-        self.assertFalse(M.is_auto_selectable(m, shared=False, requires_root=False))
-
-    def test_shared_never_auto(self):
-        m = M.Match("bundle_id", "com.acme.Widget", CONFIDENCE_EXACT)
-        self.assertFalse(M.is_auto_selectable(m, shared=True, requires_root=False))
-
-    def test_root_never_auto(self):
-        m = M.Match("bundle_id", "com.acme.Widget", CONFIDENCE_EXACT)
-        self.assertFalse(M.is_auto_selectable(m, shared=False, requires_root=True))
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -84,8 +84,28 @@ SHARED_COMPONENT_PREFIXES = (
 RESERVED_DIR_NAMES = frozenset(
     n.lower()
     for n in {
-        # Linux / XDG session + desktop
+        # Linux / XDG session + desktop + shared data dirs
         "systemd",
+        "flatpak",
+        "snap",
+        "trash",
+        "applications",
+        "icons",
+        "fonts",
+        "themes",
+        "mime",
+        "desktop-directories",
+        "keyrings",
+        "gnome",
+        "kde",
+        "xfce4",
+        "python",
+        "pip",
+        "npm",
+        "node_modules",
+        "go",
+        "cargo",
+        "rustup",
         "autostart",
         "pulse",
         "pulseaudio",
@@ -131,6 +151,11 @@ class IdentifierError(ValueError):
 def normalize_casefold(value: str) -> str:
     """Case-fold + NFC-normalize for robust cross-form comparison."""
     return unicodedata.normalize("NFC", value).casefold()
+
+
+def normalize_nfc(value: str) -> str:
+    """NFC-normalize only (case-sensitive filesystems)."""
+    return unicodedata.normalize("NFC", value)
 
 
 def name_forms(value: str) -> "set[str]":
@@ -213,7 +238,7 @@ def is_reserved_name(value: str) -> bool:
     }
 
 
-def bundle_id_prefix_matches(target: str, candidate: str) -> bool:
+def bundle_id_prefix_matches(target: str, candidate: str, *, case_insensitive: bool = True) -> bool:
     """Dot-boundary prefix test: does ``candidate`` belong to ``target``?
 
     ``com.google.Chrome`` matches ``com.google.Chrome`` and
@@ -222,8 +247,9 @@ def bundle_id_prefix_matches(target: str, candidate: str) -> bool:
     """
     if not target or not candidate:
         return False
-    t = normalize_casefold(target)
-    c = normalize_casefold(candidate)
+    norm = normalize_casefold if case_insensitive else normalize_nfc
+    t = norm(target)
+    c = norm(candidate)
     if c == t:
         return True
     return c.startswith(t + ".")
@@ -248,4 +274,3 @@ def vendor_product_from_bundle_id(bundle_id: str) -> Optional["tuple[str, str]"]
 
 # Imported late to avoid a hard dependency at module import for the rare
 # ``is_safe_name_component`` os.curdir check above.
-import os  # noqa: E402

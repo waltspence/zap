@@ -22,7 +22,6 @@ from . import fsutil
 from . import identifiers as I
 from .catalog import ID_PATH, ID_SCAN
 from .history import (
-    LockBusy,
     ManifestRecord,
     ManifestWriter,
     exclusive_lock,
@@ -48,12 +47,27 @@ from .models import (
     Artifact,
     Fingerprint,
     Match,
+    ORPHANS_IDENTIFIER,
     Plan,
     artifact_id_for,
 )
 from .safety import SafetyGuard, build_allowed_roots
 from .scanner import Scanner
 from .trash import get_trash
+
+
+# Exact-confidence match keys that may be removed without review. Everything
+# else (prefix, name, vendor folder, embedded, group container, iCloud) is
+# shown but must be opted into with --aggressive / --include-low / --only.
+AUTO_EXACT_KEYS = frozenset({"bundle_id", "byhost", "receipt", "plugin_bundle_id"})
+
+
+def _identity(path: Path) -> Optional[Tuple[int, int]]:
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino)
 
 
 def iso_now(env: Environment) -> str:
@@ -68,7 +82,7 @@ class ExecutionReport:
     results: List[ActionResult] = field(default_factory=list)
 
     def summary(self) -> dict:
-        counts = {}
+        counts: dict = {}
         reclaimed = 0
         for r in self.results:
             counts[r.status] = counts.get(r.status, 0) + 1
@@ -82,10 +96,16 @@ class ExecutionReport:
             "bytes_reclaimed": reclaimed,
         }
 
-    def to_dict(self) -> dict:
+    def to_dict(self, *, summary_only: bool = False, compact: bool = False) -> dict:
+        """``summary_only`` keeps counts plus only the results that need a
+        human's attention (anything not removed / previewed)."""
+        results = self.results
+        if summary_only:
+            results = [r for r in results if r.status not in (STATUS_REMOVED, STATUS_DRY_RUN)]
         return {
             **self.summary(),
-            "results": [r.to_dict() for r in self.results],
+            "results": [r.to_dict(compact=compact) for r in results],
+            "results_omitted": len(self.results) - len(results),
         }
 
     def has_failures(self) -> bool:
@@ -105,7 +125,12 @@ class Engine:
 
     def list_apps(self) -> List[App]:
         if self._apps is None:
-            self._apps = self.backend.discover_apps()
+            apps = self.backend.discover_apps()
+            guard = self._guard()
+            for app in apps:
+                if guard.is_protected_app(app.path, app.bundle_id, app.name):
+                    app.protected = True
+            self._apps = apps
         return self._apps
 
     def resolve(self, selector: str) -> ResolveResult:
@@ -113,11 +138,20 @@ class Engine:
 
     def _guard(self, app: Optional[App] = None) -> SafetyGuard:
         roots = build_allowed_roots(self.env, self.backend.all_roots())
-        if app is not None:
-            # Allow the app bundle/binary's own directory as a root so the
-            # bundle itself can be removed even from an unusual location.
+        if app is not None and self._app_in_application_root(app):
+            # Allow the app bundle's own directory (e.g. a subfolder of
+            # /Applications) so the bundle itself can be removed. The parent is
+            # only admitted when the app already sits under an application
+            # root — otherwise a crafted plan could name any directory as an
+            # "app" and turn its parent into an allow-listed root.
             roots.append(app.path.parent)
         return SafetyGuard(self.env, roots)
+
+    def _app_in_application_root(self, app: App) -> bool:
+        app_roots = build_allowed_roots(self.env, self.backend.application_roots())
+        probe = SafetyGuard(self.env, app_roots)
+        ok, _reason = probe.check(app.path)
+        return ok
 
     # -- scan / plan -------------------------------------------------------
 
@@ -189,44 +223,58 @@ class Engine:
         )
 
     def _bundle_risk(self, app: App):
-        s = str(app.path)
-        if self.env.is_linux and (s.startswith("/opt") or s.startswith("/usr")):
-            return RISK_ELEVATED
-        return RISK_NORMAL
+        return RISK_ELEVATED if self._bundle_requires_root(app) else RISK_NORMAL
 
     def _bundle_requires_root(self, app: App) -> bool:
-        if self.env.is_linux:
-            s = str(app.path)
-            return s.startswith("/opt") or s.startswith("/usr")
+        """On Linux, binaries under the system prefixes are root-owned."""
+        if not self.env.is_linux:
+            return False
+        p = os.path.normpath(os.path.abspath(str(app.path)))
+        for sub in ("opt", "usr"):
+            root = os.path.normpath(str(self.env.resolve("sys", sub)))
+            if p == root or p.startswith(root + os.sep):
+                return True
         return False
 
     def _apply_selection_tiers(self, artifacts, *, aggressive: bool, include_low: bool) -> None:
         """Set ``auto_selected`` on the default action set for a plan.
 
-        Default: exact bundle-id, non-shared, non-root, removable.
-        --aggressive: also derived-confidence (prefix / vendor / embedded).
-        --include-low: also heuristic (name-only).
-        The app bundle is always in the default set (it is the whole point).
+        This is the ONLY place auto-selection is decided (``--include-low``
+        implies ``--aggressive``). The table:
+
+        ======================  =======  ============  =============
+        artifact                default  --aggressive  --include-low
+        ======================  =======  ============  =============
+        app bundle (non-root)   yes      yes           yes
+        system extension        never    never         never
+        shared / requires root  no       no            no
+        exact, AUTO_EXACT_KEYS  yes      yes           yes
+        exact, other key        no       yes           yes
+        derived                 no       yes           yes
+        heuristic               no       no            yes
+        ======================  =======  ============  =============
         """
+        # --include-low is the widest tier and implies --aggressive.
+        aggressive = aggressive or include_low
         for a in artifacts:
-            if a.category == CAT_SYSTEM_EXTENSION:
-                a.auto_selected = False
-                continue
-            if a.category == CAT_APP_BUNDLE and not a.requires_root:
-                a.auto_selected = True
-                continue
-            if a.shared or a.requires_root:
-                a.auto_selected = False
-                continue
-            conf = a.match.confidence
-            if conf == CONFIDENCE_EXACT:
-                a.auto_selected = True
-            elif conf == CONFIDENCE_DERIVED:
-                a.auto_selected = bool(aggressive)
-            elif conf == CONFIDENCE_HEURISTIC:
-                a.auto_selected = bool(include_low)
-            else:
-                a.auto_selected = False
+            a.auto_selected = self._auto_select(a, aggressive=aggressive, include_low=include_low)
+
+    @staticmethod
+    def _auto_select(a: Artifact, *, aggressive: bool, include_low: bool) -> bool:
+        if a.category == CAT_SYSTEM_EXTENSION:
+            return False
+        if a.category == CAT_APP_BUNDLE:
+            return not a.requires_root
+        if a.shared or a.requires_root:
+            return False
+        conf = a.match.confidence
+        if conf == CONFIDENCE_EXACT:
+            return a.match.key in AUTO_EXACT_KEYS or bool(aggressive)
+        if conf == CONFIDENCE_DERIVED:
+            return bool(aggressive)
+        if conf == CONFIDENCE_HEURISTIC:
+            return bool(include_low)
+        return False
 
     def _app_warnings(self, app: App, artifacts) -> List[dict]:
         out: List[dict] = []
@@ -345,6 +393,7 @@ class Engine:
         guard = self._guard(plan.app)
         trash = get_trash(self.env)
         report = ExecutionReport(operation_id=None, dry_run=dry_run, method=method)
+        foreign_apps = self._other_app_paths(plan.app)
 
         for art in sorted(selected, key=lambda a: str(a.path)):
             path = art.path
@@ -356,6 +405,19 @@ class Engine:
             ok, reason = guard.check(path)
             if not ok:
                 report.results.append(self._res(art, STATUS_BLOCKED, reason, method))
+                continue
+            # 2b) never touch another installed app's bundle (or anything in it)
+            owner = self._owning_app(path, foreign_apps)
+            if owner is not None:
+                report.results.append(
+                    self._res(art, STATUS_BLOCKED, f"belongs to another installed app ({owner})", method)
+                )
+                continue
+            inside = self._contained_app(path, foreign_apps)
+            if inside is not None:
+                report.results.append(
+                    self._res(art, STATUS_BLOCKED, f"contains another installed app ({inside})", method)
+                )
                 continue
             # 3) existence
             if not os.path.lexists(path):
@@ -380,7 +442,8 @@ class Engine:
                     )
                 else:
                     item = trash.trash(path)
-                    self._journal(writer, art, item.location, "trash", reversible=True)
+                    self._journal(writer, art, item.location, "trash", reversible=True,
+                                  info=item.info, ident=_identity(Path(item.location)))
                     report.results.append(
                         ActionResult(art.id, path, STATUS_REMOVED, reversible=True, method="trash", trash_path=item.location, size_bytes=art.size_bytes)
                     )
@@ -391,8 +454,38 @@ class Engine:
                 report.results.append(self._res(art, STATUS_FAILED, str(exc), method))
         return report
 
-    def _journal(self, writer, art, location, method, reversible) -> None:
+    def _other_app_paths(self, app: App) -> List[Tuple[str, str]]:
+        """(normalized bundle path, identifier) of every installed app except ``app``."""
+        mine = self._casekey(os.path.normpath(os.path.abspath(str(app.path))))
+        out: List[Tuple[str, str]] = []
+        for other in self.list_apps():
+            p = self._casekey(os.path.normpath(os.path.abspath(str(other.path))))
+            if p != mine:
+                out.append((p, other.identifier))
+        return out
+
+    def _owning_app(self, path: Path, foreign: List[Tuple[str, str]]) -> Optional[str]:
+        p = self._casekey(os.path.normpath(os.path.abspath(str(path))))
+        for bundle, ident in foreign:
+            if p == bundle or p.startswith(bundle + os.sep):
+                return ident
+        return None
+
+    def _contained_app(self, path: Path, foreign: List[Tuple[str, str]]) -> Optional[str]:
+        """Identifier of an installed app that lives *beneath* ``path``."""
+        p = self._casekey(os.path.normpath(os.path.abspath(str(path))))
+        for bundle, ident in foreign:
+            if bundle.startswith(p + os.sep):
+                return ident
+        return None
+
+    def _casekey(self, s: str) -> str:
+        # APFS/HFS+ are case- and normalization-insensitive: NFC + casefold.
+        return I.normalize_casefold(s) if self.env.is_darwin else s
+
+    def _journal(self, writer, art, location, method, reversible, info=None, ident=None) -> None:
         if writer is not None:
+            dev, ino = ident if ident else (None, None)
             writer.record(
                 ManifestRecord(
                     artifact_id=art.id,
@@ -400,6 +493,9 @@ class Engine:
                     location=location,
                     method=method,
                     reversible=reversible,
+                    info=info,
+                    dev=dev,
+                    ino=ino,
                 )
             )
 
@@ -433,6 +529,8 @@ class Engine:
 
         artifacts: List[Artifact] = []
         seen: Set[str] = set()
+        warnings: List[dict] = []
+        unreadable: List[str] = []
         for loc in self.backend.locations():
             if loc.strategy not in (ID_SCAN, ID_PATH):
                 continue
@@ -441,7 +539,15 @@ class Engine:
             container = self.env.resolve(loc.base, *[s for s in loc.container.split("/") if s])
             if not container.is_dir():
                 continue
-            for child in sorted(os.listdir(container)):
+            try:
+                children = sorted(os.listdir(container))
+            except PermissionError:
+                # TCC-protected on macOS (Cookies, Mail, ...) without Full Disk Access.
+                unreadable.append(str(container))
+                continue
+            except OSError:
+                continue
+            for child in children:
                 name = child
                 for suf in loc.suffixes or ():
                     if suf and name.endswith(suf):
@@ -482,12 +588,21 @@ class Engine:
                     )
                 )
         artifacts.sort(key=lambda a: str(a.path))
-        app = App(name="orphans", identifier="orphans", path=self.env.home)
+        if unreadable:
+            warnings.append(
+                {
+                    "code": "permission_denied",
+                    "message": f"{len(unreadable)} location(s) could not be read (on macOS, grant the "
+                    "terminal Full Disk Access in System Settings > Privacy & Security).",
+                    "items": unreadable,
+                }
+            )
+        app = App(name=ORPHANS_IDENTIFIER, identifier=ORPHANS_IDENTIFIER, path=self.env.home)
         return Plan(
             app=app,
             artifacts=artifacts,
             created_at=iso_now(self.env),
             schema_version=SCHEMA_VERSION,
             zap_version=__version__,
-            warnings=[],
+            warnings=warnings,
         )

@@ -84,6 +84,21 @@ def ensure_dir(path: Path, mode: int = 0o700) -> None:
     os.makedirs(path, mode=mode, exist_ok=True)
 
 
+def chown_to_user(env: Environment, path: Path) -> None:
+    """Under ``sudo``, hand a file we created back to the invoking user.
+
+    zap's history and lock live in the *user's* home even when run as root;
+    without this the next un-elevated ``zap undo`` cannot read them. No-op
+    unless we are root and the environment names a different uid.
+    """
+    if not env.is_root or env.uid == 0:
+        return
+    try:
+        os.chown(path, env.uid, env.gid if env.gid is not None else -1)
+    except OSError:
+        pass
+
+
 def _fsync_path(path: Path) -> None:
     """Best-effort fsync of a file or directory so a move survives a crash."""
     flags = os.O_RDONLY

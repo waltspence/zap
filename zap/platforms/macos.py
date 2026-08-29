@@ -8,9 +8,8 @@ from typing import List, Optional
 
 from ..core import catalog as C
 from ..core import identifiers as I
-from ..core import plist
+from ..core import codesign, plist
 from ..core.models import App
-from ..environment import Environment
 from .base import Backend
 
 # Subpaths inside a .app bundle that hold *their own* bundle ids — the source
@@ -24,6 +23,11 @@ _EMBEDDED_GLOBS = [
     ("Contents/Library/LaunchServices", ("",)),
     ("Contents/Frameworks", (".framework",)),
 ]
+
+# launchd plists shipped inside the bundle (SMAppService / SMJobBless helpers).
+# Their ``Label`` is the id the installed copy in ~/Library/LaunchAgents or
+# /Library/LaunchDaemons is named by.
+_EMBEDDED_LAUNCHD = ("Contents/Library/LaunchAgents", "Contents/Library/LaunchDaemons")
 
 
 class MacBackend(Backend):
@@ -50,7 +54,7 @@ class MacBackend(Backend):
 
     # -- helpers ----------------------------------------------------------
 
-    def _find_bundles(self, root: Path, max_depth: int = 2) -> List[Path]:
+    def _find_bundles(self, root: Path, max_depth: int = 6) -> List[Path]:
         """Collect ``*.app`` bundles under ``root`` without descending into them."""
         out: List[Path] = []
         if not root.is_dir():
@@ -68,7 +72,7 @@ class MacBackend(Backend):
                 if entry.name.endswith(".app"):
                     out.append(Path(entry.path))
                     continue  # never descend into a bundle
-                if depth < max_depth and not entry.name.startswith("."):
+                if depth < max_depth:
                     stack.append((Path(entry.path), depth + 1))
         return out
 
@@ -81,7 +85,7 @@ class MacBackend(Backend):
         executable = info.get("CFBundleExecutable")
         version = info.get("CFBundleShortVersionString") or info.get("CFBundleVersion")
         usable = I.usable_bundle_id(bundle_id)
-        embedded = self._embedded_ids(app_path, bundle_id)
+        embedded, shared_embedded = self._embedded_ids(app_path, bundle_id)
         protected = bool(bundle_id and I.is_apple_system_id(bundle_id))
         managed = "setapp" if "/Setapp/" in str(app_path) else None
         return App(
@@ -91,18 +95,20 @@ class MacBackend(Backend):
             bundle_id=bundle_id,
             display_name=display if isinstance(display, str) else None,
             executable=executable if isinstance(executable, str) else None,
-            team_id=None,  # not available without inspecting the code signature
+            team_id=codesign.team_id_for_bundle(app_path),
             version=str(version) if version is not None else None,
             embedded_bundle_ids=embedded,
+            shared_embedded_ids=shared_embedded,
             protected=protected,
             degraded=usable is None,
             managed_by=managed,
         )
 
-    def _embedded_ids(self, app_path: Path, main_id: Optional[str]) -> List[str]:
+    def _embedded_ids(self, app_path: Path, main_id: Optional[str]) -> "tuple[List[str], List[str]]":
         out: List[str] = []
+        shared: List[str] = []
         seen = set()
-        for sub, exts in _EMBEDDED_GLOBS:
+        for sub, _exts in _EMBEDDED_GLOBS:
             d = app_path / sub
             if not d.is_dir():
                 continue
@@ -127,7 +133,25 @@ class MacBackend(Backend):
                     if k not in seen:
                         seen.add(k)
                         out.append(bid)
-        return out
+                        # Frameworks (Python.framework -> org.python.python,
+                        # Sparkle, Electron) are shipped by many apps.
+                        if sub == "Contents/Frameworks":
+                            shared.append(bid)
+        for sub in _EMBEDDED_LAUNCHD:
+            d = app_path / sub
+            if not d.is_dir():
+                continue
+            for plist_path in sorted(d.glob("*.plist")):
+                label = plist.read_plist(plist_path).get("Label")
+                if not isinstance(label, str) or not I.is_valid_bundle_id(label):
+                    continue
+                if main_id and I.normalize_casefold(label) == I.normalize_casefold(main_id):
+                    continue
+                k = I.normalize_casefold(label)
+                if k not in seen:
+                    seen.add(k)
+                    out.append(label)
+        return out, shared
 
 
 def _is_dir_nofollow(entry: os.DirEntry) -> bool:

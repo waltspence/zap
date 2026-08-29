@@ -17,7 +17,6 @@ fallback safely. zap additionally records its own undo manifest (see
 
 from __future__ import annotations
 
-import errno
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,7 +95,7 @@ class Trash:
                 except FileExistsError:
                     attempt += 1
                     if attempt > 10000:
-                        raise TrashError("could not reserve a trash name")
+                        raise TrashError("could not reserve a trash name") from None
                     continue
             dst = files_dir / name
             if dst.exists() or dst.is_symlink():
@@ -190,8 +189,8 @@ def get_trash(env: Environment) -> Trash:
 
 
 def _silent_unlink(path: Path) -> None:
+    """Best-effort unlink of a metadata file; never raises."""
     try:
         os.unlink(path)
-    except OSError as exc:
-        if exc.errno not in (errno.ENOENT,):
-            pass
+    except OSError:
+        pass
