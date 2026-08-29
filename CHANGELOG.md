@@ -22,6 +22,38 @@ default output is additive.
 - Protected-app detection (`SafetyGuard.is_protected_app`) is applied to every
   discovered app, not only Apple bundle ids.
 
+### Red-team audit (46 reproduced findings, all addressed except two noted below)
+
+- **A plan is a selection, not a source of paths.** `uninstall --plan` re-scans
+  the app and acts only on artifacts the fresh scan attributes to it *and*
+  the plan selected. Saved fingerprints still detect drift; stale ids are
+  reported in `selection_notes`; plan `warnings` are never echoed; compact
+  plans replay; `orphans -o` plans replay; `--aggressive/--include-low` with
+  `--plan` is a usage error.
+- Artifacts that *contain* another installed app are blocked (ancestor
+  directories); NFC-normalized comparisons on macOS; `.app` discovery to depth 6
+  including dot-directories.
+- Sibling guards on `.ShipIt` names, ByHost dot-children, embedded ids that are
+  (or live under) another app's id, and display names shared with another app;
+  `Contents/Frameworks` ids are shared, never auto-selected; the Linux `Exec=`
+  basename is no longer a name key; bundle ids compare case-sensitively on
+  case-sensitive filesystems; more reserved XDG names.
+- `undo`: operation ids validated (no path traversal), the run lock is held,
+  a torn manifest line no longer hides the operation, same-second operations
+  get distinct ids, and a trashed item that was replaced by a different object
+  is refused rather than "restored".
+- Exit-code contract: everything blocked → 6; drifted/failed/blocked alongside
+  removals → 5; non-zero exits always carry `error`; argparse errors under
+  `--json` are envelopes; `--only ""` and unknown `--except` ids are errors;
+  fuzzy substring selectors are refused with `--yes`; `selection_notes` sorted.
+- zap's own state directory can never be a target; a leaf symlink to another
+  volume no longer causes a trash directory to be created inside its target.
+- Known, documented, not fixed: a cross-device move whose final `rmtree(src)`
+  fails partway is reported `failed` with the copy left in the trash (no data
+  loss, but not journaled); two installed copies of the same bundle id share
+  id-keyed data, so uninstalling one by path removes the other's preferences —
+  review the plan when `zap list` shows duplicate ids.
+
 ### Correctness
 
 - Case-variant vendor folders (`Google/Chrome` vs `google/Chrome` on APFS) no
