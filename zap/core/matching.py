@@ -16,7 +16,7 @@ safety:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Set
+from typing import Optional, Set, Tuple
 
 from . import identifiers as I
 from .models import (
@@ -39,6 +39,8 @@ class AppKeys:
     other_bundle_ids: Set[str] = None  # type: ignore[assignment]
     # case-folded names of *other* installed apps (name-match sibling guard).
     other_names: Set[str] = None  # type: ignore[assignment]
+    # (vendor, product) folder pairs of *other* installed apps, case-folded.
+    other_vendor_dirs: Set[Tuple[str, str]] = None  # type: ignore[assignment]
     # Compare bundle ids exactly (case-sensitive filesystems) or case-folded.
     case_insensitive: bool = True
 
@@ -47,6 +49,8 @@ class AppKeys:
             self.other_bundle_ids = set()
         if self.other_names is None:
             self.other_names = set()
+        if self.other_vendor_dirs is None:
+            self.other_vendor_dirs = set()
 
     def idkey(self, value: str) -> str:
         return I.normalize_casefold(value) if self.case_insensitive else I.normalize_nfc(value)

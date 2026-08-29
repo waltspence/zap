@@ -54,6 +54,17 @@ default output is additive.
   id-keyed data, so uninstalling one by path removes the other's preferences —
   review the plan when `zap list` shows duplicate ids.
 
+### Swarm review follow-ups
+
+- `zap orphans` no longer crashes on a Mac without Full Disk Access; unreadable
+  locations are reported in a `permission_denied` warning.
+- Vendor/product folders shared by two installed apps (`com.acme.Widget` and
+  `net.acme.Widget` → `Acme/Widget`) are marked shared, never auto-selected.
+- Exit codes: a run where every item failed or drifted is 5, not 4.
+- Linux: root-owned prefixes are derived from the system root (no more
+  `/optional` matching `/opt`); case-variant identifiers are distinct apps.
+- `--plan` with `--aggressive/--include-low` is rejected before the re-scan.
+
 ### Correctness
 
 - Case-variant vendor folders (`Google/Chrome` vs `google/Chrome` on APFS) no
@@ -88,8 +99,8 @@ default output is additive.
   (counts + only results needing attention), `dropped_by_safety.items` capped
   at 20 on stdout (`items_truncated`), `ambiguous_selector.candidates` is a
   list of `{identifier, path}`.
-- Plans written with `-o` are always full; compact plans are refused by
-  `--plan`.
+- Plans written with `-o` are always full; compact plans replay too (they are
+  selections), with drift then measured only against the fresh scan.
 
 ### Tooling
 

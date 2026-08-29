@@ -223,15 +223,17 @@ class Engine:
         )
 
     def _bundle_risk(self, app: App):
-        s = str(app.path)
-        if self.env.is_linux and (s.startswith("/opt") or s.startswith("/usr")):
-            return RISK_ELEVATED
-        return RISK_NORMAL
+        return RISK_ELEVATED if self._bundle_requires_root(app) else RISK_NORMAL
 
     def _bundle_requires_root(self, app: App) -> bool:
-        if self.env.is_linux:
-            s = str(app.path)
-            return s.startswith("/opt") or s.startswith("/usr")
+        """On Linux, binaries under the system prefixes are root-owned."""
+        if not self.env.is_linux:
+            return False
+        p = os.path.normpath(os.path.abspath(str(app.path)))
+        for sub in ("opt", "usr"):
+            root = os.path.normpath(str(self.env.resolve("sys", sub)))
+            if p == root or p.startswith(root + os.sep):
+                return True
         return False
 
     def _apply_selection_tiers(self, artifacts, *, aggressive: bool, include_low: bool) -> None:
@@ -527,6 +529,8 @@ class Engine:
 
         artifacts: List[Artifact] = []
         seen: Set[str] = set()
+        warnings: List[dict] = []
+        unreadable: List[str] = []
         for loc in self.backend.locations():
             if loc.strategy not in (ID_SCAN, ID_PATH):
                 continue
@@ -535,7 +539,15 @@ class Engine:
             container = self.env.resolve(loc.base, *[s for s in loc.container.split("/") if s])
             if not container.is_dir():
                 continue
-            for child in sorted(os.listdir(container)):
+            try:
+                children = sorted(os.listdir(container))
+            except PermissionError:
+                # TCC-protected on macOS (Cookies, Mail, ...) without Full Disk Access.
+                unreadable.append(str(container))
+                continue
+            except OSError:
+                continue
+            for child in children:
                 name = child
                 for suf in loc.suffixes or ():
                     if suf and name.endswith(suf):
@@ -576,6 +588,15 @@ class Engine:
                     )
                 )
         artifacts.sort(key=lambda a: str(a.path))
+        if unreadable:
+            warnings.append(
+                {
+                    "code": "permission_denied",
+                    "message": f"{len(unreadable)} location(s) could not be read (on macOS, grant the "
+                    "terminal Full Disk Access in System Settings > Privacy & Security).",
+                    "items": unreadable,
+                }
+            )
         app = App(name=ORPHANS_IDENTIFIER, identifier=ORPHANS_IDENTIFIER, path=self.env.home)
         return Plan(
             app=app,
@@ -583,5 +604,5 @@ class Engine:
             created_at=iso_now(self.env),
             schema_version=SCHEMA_VERSION,
             zap_version=__version__,
-            warnings=[],
+            warnings=warnings,
         )

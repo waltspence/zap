@@ -319,3 +319,102 @@ class TrashIdentity(unittest.TestCase):
             res = next(r for r in out["data"]["results"] if r["original"].endswith("Widget.app"))
             self.assertEqual(res["status"], "failed")
             self.assertFalse((root / "Applications" / "Widget.app").exists())
+
+
+class SwarmFollowUps(unittest.TestCase):
+    def test_orphans_survives_unreadable_location(self):
+        import os
+        import stat
+
+        with TempTree() as root:
+            build_widget_tree(root)
+            env = darwin_env(root)
+            cookies = env.home / "Library" / "Cookies"
+            cookies.mkdir(parents=True)
+            os.chmod(cookies, 0)
+            try:
+                if os.access(cookies, os.R_OK):
+                    self.skipTest("running as root; cannot simulate EPERM")
+                rc, out = run(["--json", "orphans"], env)
+            finally:
+                os.chmod(cookies, stat.S_IRWXU)
+            self.assertEqual(rc, 0, out)
+            self.assertTrue(any(w["code"] == "permission_denied" for w in out["warnings"]))
+
+    def test_vendor_dir_shared_between_tld_variants(self):
+        with TempTree() as root:
+            build_widget_tree(root)
+            env = darwin_env(root)
+            make_app_bundle(root / "Applications", "NetWidget", "net.acme.Widget")
+            vd = env.home / "Library" / "Application Support" / "Acme" / "Widget"
+            vd.mkdir(parents=True)
+            (vd / "data").write_text("x")
+            eng = Engine(env)
+            plan = eng.scan(eng.resolve("com.acme.Widget").app, aggressive=True)
+            art = next(a for a in plan.artifacts if a.match.key == "vendor_folder")
+            self.assertTrue(art.shared)
+            self.assertFalse(art.auto_selected)
+
+    def test_exit_code_table(self):
+        from zap.core.engine import ExecutionReport
+        from zap.core.envelope import EXIT_OK, EXIT_PARTIAL
+        from zap.core.models import ActionResult
+
+        def rep(*statuses):
+            r = ExecutionReport(operation_id=None, dry_run=False, method="trash")
+            r.results = [ActionResult(id="x", path=Path("/x"), status=s, reversible=True) for s in statuses]
+            return r
+
+        table = [
+            ((), EXIT_NOTHING),
+            (("blocked",), EXIT_BLOCKED),
+            (("blocked", "blocked"), EXIT_BLOCKED),
+            (("failed",), EXIT_PARTIAL),
+            (("drifted", "skipped"), EXIT_PARTIAL),
+            (("skipped",), EXIT_NOTHING),
+            (("removed", "failed"), EXIT_PARTIAL),
+            (("removed", "blocked"), EXIT_PARTIAL),
+            (("removed",), EXIT_OK),
+            (("dry_run", "drifted"), EXIT_PARTIAL),
+        ]
+        for statuses, expected in table:
+            for dry in (False, True):
+                with self.subTest(statuses=statuses, dry=dry):
+                    self.assertEqual(cli._uninstall_exit_code(rep(*statuses), dry), expected)
+
+    def test_linux_root_prefix_uses_sysroot(self):
+        from zap.core.models import App
+
+        with TempTree() as root:
+            env = darwin_env(root)
+            env.system = "linux"
+            eng = Engine(env)
+            self.assertTrue(eng._bundle_requires_root(App(name="a", identifier="a", path=root / "opt" / "a")))
+            self.assertFalse(eng._bundle_requires_root(App(name="a", identifier="a", path=root / "optional" / "a")))
+            self.assertFalse(eng._bundle_requires_root(App(name="a", identifier="a", path=Path("/opt/a"))))
+
+    def test_linux_case_variant_ids_are_distinct_apps(self):
+        with TempTree() as root:
+            env = darwin_env(root)
+            env.system = "linux"
+            apps = root / "usr" / "share" / "applications"
+            apps.mkdir(parents=True)
+            (apps / "Probe").write_text("")
+            if (apps / "probe").exists():
+                self.skipTest("filesystem is case-insensitive")
+            for ident in ("org.acme.App", "org.acme.app"):
+                (apps / f"{ident}.desktop").write_text(f"[Desktop Entry]\nName={ident}\nExec=x\n")
+            ids = {a.identifier for a in Engine(env).list_apps()}
+            self.assertEqual(ids, {"org.acme.App", "org.acme.app"})
+
+    def test_plan_with_scan_flags_rejected_before_rescan(self):
+        with TempTree() as root:
+            build_widget_tree(root)
+            env = darwin_env(root)
+            pf = root / "plan.json"
+            run(["--json", "scan", "Widget", "-o", str(pf)], env)
+            obj = json.loads(pf.read_text())
+            obj["app"]["identifier"] = "com.nope.Missing"
+            pf.write_text(json.dumps(obj))
+            rc, out = run(["--json", "uninstall", "--plan", str(pf), "--aggressive"], env)
+            self.assertEqual(out["error"]["code"], "usage_error")

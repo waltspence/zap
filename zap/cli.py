@@ -116,7 +116,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"zap {__version__}")
     p.add_argument("--json", action="store_true", help="emit one machine-readable JSON envelope")
     p.add_argument("--compact", action="store_true",
-                   help="with --json: slim artifacts (no fingerprints/per-item notes); plan files written with -o stay full")
+                   help="with --json: slim artifacts (no fingerprints/per-item notes); replayable with --plan, "
+                        "but drift is then measured only against the fresh scan")
     sub = p.add_subparsers(dest="command")
 
     sp = sub.add_parser("list", help="list discovered installed apps")
@@ -202,7 +203,7 @@ def cmd_scan(ctx: Context, args) -> int:
 def cmd_orphans(ctx: Context, args) -> int:
     plan = ctx.engine.orphans()
     _maybe_write_plan(args, plan)
-    return ctx.ok("orphans", ctx.plan_dict(plan), human=ctx.renderer.plan(plan, title="Orphans"))
+    return ctx.ok("orphans", ctx.plan_dict(plan), warnings=plan.warnings, human=ctx.renderer.plan(plan, title="Orphans"))
 
 
 def _maybe_write_plan(args, plan: Plan) -> None:
@@ -289,17 +290,17 @@ def _plan_selection(ctx: Context, saved: Plan, args) -> Tuple[Plan, Set[str], Li
     artifacts so drift since the plan was written is still detected.
     """
     notes: List[dict] = []
-    if saved.app.identifier == ORPHANS_IDENTIFIER:
-        fresh = ctx.engine.orphans()
-    else:
-        live = _verify_plan_app(ctx, saved)
-        fresh = ctx.engine.scan(live)
     if args.aggressive or args.include_low:
         raise ZapError(
             "usage_error",
             "--aggressive/--include-low are scan-time options; with --plan the plan's own "
             "selection is used (re-scan with those flags and save a new plan).",
         )
+    if saved.app.identifier == ORPHANS_IDENTIFIER:
+        fresh = ctx.engine.orphans()
+    else:
+        live = _verify_plan_app(ctx, saved)
+        fresh = ctx.engine.scan(live)
     saved_by_id = {a.id: a for a in saved.artifacts}
     fresh_by_id = {a.id: a for a in fresh.artifacts}
     stale = sorted(i for i in saved_by_id if i not in fresh_by_id)
@@ -413,20 +414,27 @@ def cmd_uninstall(ctx: Context, args) -> int:
 
 
 def _uninstall_exit_code(report, dry_run: bool) -> int:
-    """The documented contract: 5 if anything failed/drifted/blocked while other
-    items were acted on, 6 if the guard blocked everything, 4 if nothing was
-    left to act on. Dry runs report 6 when everything is blocked, else 0."""
+    """The documented contract (same for dry and wet runs):
+
+    * every result blocked                      -> 6
+    * nothing acted on, some failed/drifted     -> 5
+    * nothing acted on, all skipped             -> 4
+    * acted on some, any failed/drifted/blocked -> 5
+    * otherwise                                 -> 0
+    """
     statuses = {r.status for r in report.results}
     acted = STATUS_REMOVED in statuses or STATUS_DRY_RUN in statuses
     troubled = bool(statuses & {STATUS_FAILED, STATUS_DRIFTED, STATUS_BLOCKED})
+    if statuses and statuses <= {STATUS_BLOCKED}:
+        return EXIT_BLOCKED  # the guard refused everything, wet or dry
     if not acted:
-        if statuses and statuses <= {STATUS_BLOCKED}:
-            return EXIT_BLOCKED
-        return EXIT_NOTHING if not dry_run else (EXIT_BLOCKED if STATUS_BLOCKED in statuses else EXIT_OK)
-    if troubled and not dry_run:
+        # Nothing removed/previewed: total failure or drift is 5, not 4, so an
+        # agent can tell "every item failed" from "nothing was selected".
+        if statuses & {STATUS_FAILED, STATUS_DRIFTED}:
+            return EXIT_PARTIAL
+        return EXIT_NOTHING
+    if troubled:
         return EXIT_PARTIAL
-    if troubled and dry_run and STATUS_BLOCKED in statuses:
-        return EXIT_OK
     return EXIT_OK
 
 

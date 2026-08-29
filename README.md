@@ -146,9 +146,10 @@ by a model. Before anything is touched, `--plan` re-resolves `app.identifier`
 against the installed apps and requires the same path (`plan_app_mismatch`
 otherwise, exit 6); protected system apps are refused; every artifact must
 sit under a catalog root *and* outside every other installed app's bundle;
-and compact plans (no fingerprints) are refused because drift cannot be
-detected. Write plans with `zap scan <app> -o plan.json`, never with
-`--compact`.
+and a compact plan (no saved fingerprints) still replays — but then drift is
+only checked between the fresh scan and the moment of removal, not since you
+reviewed the plan. For a reviewed-then-applied flow write plans with
+`zap scan <app> -o plan.json` (always full, whatever `--compact` says).
 
 **Exit codes** (also `error.code`, 1:1):
 
@@ -158,8 +159,8 @@ detected. Write plans with `zap scan <app> -o plan.json`, never with
 | 1 | error (internal) |
 | 2 | usage error / unknown artifact ids |
 | 3 | app not found |
-| 4 | nothing to remove |
-| 5 | partial failure (some artifacts failed) |
+| 4 | nothing to remove (everything selected was already gone) |
+| 5 | partial failure (any artifact failed or drifted, even if none were removed) |
 | 6 | blocked by safety (protected app, or `plan_app_mismatch`) |
 | 7 | confirmation required (`--purge --yes` without `--confirm-purge`) |
 | 8 | ambiguous selector (see `data.candidates`) |

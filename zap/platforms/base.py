@@ -112,6 +112,12 @@ class Backend:
         for a in others_apps:
             other_names |= matching.build_name_set(a.name, a.display_name)
         other_names -= names  # a second copy of *this* app shares its names
+        other_vendor_dirs = set()
+        for a in others_apps:
+            ob = I.usable_bundle_id(a.bundle_id)
+            vp = I.vendor_product_from_bundle_id(ob) if ob else None
+            if vp:
+                other_vendor_dirs.add((I.normalize_casefold(vp[0]), I.normalize_casefold(vp[1])))
         keys = matching.AppKeys(
             bundle_id=usable,
             team_id=app.team_id if I.is_valid_team_id(app.team_id) else None,
@@ -119,6 +125,7 @@ class Backend:
             executables=execs,
             other_bundle_ids=others,
             other_names=other_names,
+            other_vendor_dirs=other_vendor_dirs,
             case_insensitive=self.env.is_darwin,
         )
         embedded = []

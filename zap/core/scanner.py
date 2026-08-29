@@ -188,10 +188,15 @@ class Scanner:
         if vp is None:
             return
         vendor, product = vp
+        # com.acme.Widget and net.acme.Widget both decompose to Acme/Widget:
+        # if another installed app owns the same folder it is shared, never
+        # attributed to us alone.
+        key = (I.normalize_casefold(vendor), I.normalize_casefold(product))
+        shared = key in inp.keys.other_vendor_dirs
         for v in {vendor, vendor.lower(), vendor.capitalize()}:
             cand = container / v / product
             if cand.is_dir():
-                yield cand, Match("vendor_folder", f"{v}/{product}", CONFIDENCE_DERIVED), False
+                yield cand, Match("vendor_folder", f"{v}/{product}", CONFIDENCE_DERIVED), shared
 
     def _byhost(self, loc, container, inp):
         bid = inp.keys.bundle_id
