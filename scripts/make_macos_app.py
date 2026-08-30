@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Build a tiny Zap.app wrapper around ``zap-gui`` (macOS only, stdlib only).
+"""Build the native Zap.app (SwiftUI) — macOS only, needs the Command Line
+Tools (swift, sips, iconutil). No Xcode required.
 
-Needs Xcode Command Line Tools (clang, sips, iconutil).
-Usage: python scripts/make_macos_app.py [--dest ~/Applications] [--icon file.png]
-The bundle is a tiny compiled launcher that execs the ``zap-gui`` from this checkout's
-virtualenv, so it stays in sync with ``git pull``.
+Usage: python scripts/make_macos_app.py [--dest ~/Applications] [--icon file.png] [--tk]
+
+Default builds ``macos/Zap`` in release mode and bundles the binary. ``--tk``
+instead wraps the stdlib Tkinter ``zap-gui`` (portable fallback) in a compiled
+exec() shim. The app locates the ``zap`` CLI via $ZAP_BIN, ~/.local/bin, or PATH.
 """
 
 import argparse
@@ -73,32 +75,39 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dest", default=str(Path.home() / "Applications"))
     ap.add_argument("--icon", help="PNG to use instead of the built-in bolt")
+    ap.add_argument("--tk", action="store_true", help="bundle the Tkinter zap-gui instead of the SwiftUI app")
     args = ap.parse_args()
     if sys.platform != "darwin":
         print("macOS only", file=sys.stderr)
         return 2
-
-    gui_bin = ROOT / ".venv" / "bin" / "zap-gui"
-    if not gui_bin.exists():
-        gui_bin = Path(shutil.which("zap-gui") or "")
-    if not gui_bin.exists():
-        print("zap-gui not found; run `pip install -e .` first", file=sys.stderr)
-        return 1
 
     app = Path(args.dest).expanduser() / "Zap.app"
     if app.exists():
         shutil.rmtree(app)
     (app / "Contents" / "MacOS").mkdir(parents=True)
     (app / "Contents" / "Resources").mkdir()
-
-    # Launch Services refuses to `open` a bundle whose executable is a shell
-    # script (error -10669), so compile a 3-line exec() shim with clang.
     launcher = app / "Contents" / "MacOS" / "zap"
-    with tempfile.TemporaryDirectory() as td:
-        src = Path(td) / "launch.c"
-        src.write_text('#include <unistd.h>\n#include <stdio.h>\n'
-                       'int main(int c, char **v) { (void)c; execv(TARGET, v); perror("zap-gui"); return 1; }\n')
-        subprocess.run(["clang", "-O2", f'-DTARGET="{gui_bin}"', "-o", str(launcher), str(src)], check=True)
+
+    if args.tk:
+        gui_bin = ROOT / ".venv" / "bin" / "zap-gui"
+        if not gui_bin.exists():
+            gui_bin = Path(shutil.which("zap-gui") or "")
+        if not gui_bin.exists():
+            print("zap-gui not found; run `pip install -e .` first", file=sys.stderr)
+            return 1
+        # Launch Services refuses to `open` a bundle whose executable is a shell
+        # script (error -10669), so compile a 3-line exec() shim with clang.
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "launch.c"
+            src.write_text('#include <unistd.h>\n#include <stdio.h>\n'
+                           'int main(int c, char **v) { (void)c; execv(TARGET, v); perror("zap-gui"); return 1; }\n')
+            subprocess.run(["clang", "-O2", f'-DTARGET="{gui_bin}"', "-o", str(launcher), str(src)], check=True)
+    else:
+        pkg = ROOT / "macos" / "Zap"
+        subprocess.run(["swift", "build", "-c", "release", "--product", "Zap"], cwd=pkg, check=True)
+        bin_path = subprocess.run(["swift", "build", "-c", "release", "--show-bin-path"], cwd=pkg,
+                                  check=True, capture_output=True, text=True).stdout.strip()
+        shutil.copy2(Path(bin_path) / "Zap", launcher)
 
     with tempfile.TemporaryDirectory() as td:
         png = Path(args.icon) if args.icon else Path(td) / "bolt.png"
@@ -119,6 +128,7 @@ def main() -> int:
         "CFBundleExecutable": "zap", "CFBundleIconFile": "zap",
         "CFBundlePackageType": "APPL", "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
+        "LSApplicationCategoryType": "public.app-category.utilities",
     }, (app / "Contents" / "Info.plist").open("wb"))
     subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True, capture_output=True)
     os.utime(app)  # nudge Finder to refresh the icon

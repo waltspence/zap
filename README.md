@@ -236,15 +236,23 @@ MIT. See [LICENSE](LICENSE).
 
 ## GUI (optional)
 
-`zap-gui` is a stdlib-only Tkinter front-end — no extra dependencies, one file
-(`zap/gui.py`). It shells out to `zap --json`, so the CLI's safety rules,
-tiers, Trash and undo log stay in charge. Pick an app on the left, tick/untick
-what goes, **Move to Trash**; **Undo…** lists past operations to restore.
+**macOS — native.** `macos/Zap` is a small SwiftUI app (no Xcode needed, just
+the Command Line Tools). It shells out to `zap --json`, so the CLI's safety
+rules, tiers, Trash and undo log stay in charge. Sidebar of apps with a
+filter; the scan as a table with checkboxes (exact matches pre-ticked,
+name-only/derived greyed until you tick them or flip **Aggressive** /
+**Name-only** in the toolbar); **Move to Trash** (⌘⌫) confirms first;
+**Undo…** lists past operations to restore.
 
 ```sh
-zap-gui                                   # run it
-python scripts/make_macos_app.py          # macOS: build ~/Applications/Zap.app
+make app                                 # → ~/Applications/Zap.app
+python scripts/make_macos_app.py --icon my-icon.png   # custom icon
+make gui-check                           # build + run ZapKit checks
 ```
 
-Icon: drop an `icon.gif`/`icon.png` in `~/.config/zap/` (or pass
-`--icon file.png` to the app builder) to replace the built-in bolt.
+The app finds `zap` via `$ZAP_BIN`, `~/.local/bin/zap`, Homebrew paths, or
+`$PATH`.
+
+**Anywhere — Tkinter fallback.** `zap-gui` is a stdlib-only Tkinter version of
+the same thing (`zap/gui.py`, one file, zero deps, plain-looking).
+`python scripts/make_macos_app.py --tk` wraps it as an app bundle instead.
