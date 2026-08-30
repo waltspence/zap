@@ -38,7 +38,7 @@ def run_zap(args: List[str]) -> Dict[str, Any]:
     """Run ``zap --json <args>`` and return the envelope (never raises)."""
     cmd = [sys.executable, "-m", "zap", "--json", *args]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": {"code": "spawn_failed", "message": str(exc)}}
     out = proc.stdout.strip() or proc.stderr.strip()
