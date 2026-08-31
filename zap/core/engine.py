@@ -10,6 +10,7 @@ instant it happens.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
@@ -60,6 +61,28 @@ from .trash import get_trash
 # else (prefix, name, vendor folder, embedded, group container, iCloud) is
 # shown but must be opted into with --aggressive / --include-low / --only.
 AUTO_EXACT_KEYS = frozenset({"bundle_id", "byhost", "receipt", "plugin_bundle_id"})
+
+
+def _perm_reason(env, art, path: Path) -> str:
+    """Turn a bare EPERM/EACCES into an actionable message."""
+    if art.requires_root:
+        return "permission denied (needs root — rerun with sudo)"
+    try:
+        owner = os.lstat(path).st_uid
+    except OSError:
+        owner = env.uid
+    if owner != env.uid and env.uid != 0:
+        who = "root" if owner == 0 else f"uid {owner}"
+        return (f"permission denied (owned by {who}"
+                + (" — App Store install; rerun with sudo or delete via Finder)" if owner == 0
+                   else " — rerun with sudo)"))
+    if sys.platform == "darwin":
+        home = str(env.home)
+        p = str(path)
+        if p.startswith(os.path.join(home, "Library") + os.sep):
+            return ("permission denied (macOS privacy protection — grant your terminal "
+                    "Full Disk Access in System Settings > Privacy & Security, then retry)")
+    return "permission denied"
 
 
 def _identity(path: Path) -> Optional[Tuple[int, int]]:
@@ -448,8 +471,7 @@ class Engine:
                         ActionResult(art.id, path, STATUS_REMOVED, reversible=True, method="trash", trash_path=item.location, size_bytes=art.size_bytes)
                     )
             except PermissionError:
-                reason = "permission denied" + (" (needs root)" if art.requires_root else "")
-                report.results.append(self._res(art, STATUS_FAILED, reason, method))
+                report.results.append(self._res(art, STATUS_FAILED, _perm_reason(self.env, art, path), method))
             except Exception as exc:  # noqa: BLE001 - report, continue with the rest
                 report.results.append(self._res(art, STATUS_FAILED, str(exc), method))
         return report
