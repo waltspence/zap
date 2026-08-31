@@ -16,6 +16,8 @@ final class Model: ObservableObject {
     @Published var operations: [UndoOperation]?     // non-nil = undo sheet visible
     @Published var confirmTrash = false
     @Published var fdaMissing = false      // launch gate: require Full Disk Access first
+    @Published var updateInfo: String?     // non-nil = update alert visible
+    @Published var updateReady = false     // true when "Update Now" applies
     @Published var blockers: [Blocker] = []
 
     let client: ZapClient
@@ -81,6 +83,24 @@ final class Model: ObservableObject {
     }
 
     func recheckAccess() { fdaMissing = FullDiskAccess.granted() == false }
+
+    func checkForUpdates() {
+        guard !busy else { return }
+        busy = true
+        Task.detached(priority: .userInitiated) {
+            let status = Updater.check()
+            await MainActor.run {
+                self.busy = false
+                if let status {
+                    self.updateReady = status.updateAvailable
+                    self.updateInfo = status.summary
+                } else {
+                    self.updateReady = false
+                    self.updateInfo = "Could not check: the source checkout was not found (rebuild with make app)."
+                }
+            }
+        }
+    }
 
     func showHistory() {
         let client = client

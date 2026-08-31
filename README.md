@@ -253,6 +253,12 @@ make gui-check                           # build + run ZapKit checks
 The app finds `zap` via `$ZAP_BIN`, `~/.local/bin/zap`, Homebrew paths, or
 `$PATH`.
 
+**Updating.** The menu's *Check for Updates…* compares the app's build commit
+with your checkout and origin; *Update Now* runs `scripts/update_app.sh`
+(git pull --ff-only, rebuild, relaunch — log in
+`~/Library/Logs/frankly-zapped-update.log`). Requires the checkout the app
+was built from to still exist.
+
 **Anywhere — Tkinter fallback.** `zap-gui` is a stdlib-only Tkinter version of
 the same thing (`zap/gui.py`, one file, zero deps, plain-looking).
 `python scripts/make_macos_app.py --tk` wraps it as an app bundle instead.

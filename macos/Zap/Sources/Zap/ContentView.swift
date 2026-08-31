@@ -34,6 +34,16 @@ struct ContentView: View {
         } message: {
             Text("\(m.selectedArtifacts.count) items of \(m.plan?.app.title ?? "") (\(humanBytes(m.selectedBytes))). You can restore them later with Undo.")
         }
+        .alert(m.updateReady ? "Update available" : "Frankly Zapped", isPresented: Binding(get: { m.updateInfo != nil }, set: { if !$0 { m.updateInfo = nil } })) {
+            if m.updateReady {
+                Button("Update Now") { Updater.updateNowAndQuit() }
+                Button("Later", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: {
+            Text((m.updateInfo ?? "") + (m.updateReady ? "\n\nUpdate pulls the repo, rebuilds, and relaunches the app." : ""))
+        }
         .alert("Permission needed", isPresented: Binding(get: { !m.blockers.isEmpty }, set: { if !$0 { m.blockers = [] } })) {
             Button("Open Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL); m.blockers = [] }
             Button("OK", role: .cancel) {}

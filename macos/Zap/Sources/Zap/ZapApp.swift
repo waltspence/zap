@@ -11,6 +11,11 @@ struct ZapApp: App {
                 .frame(minWidth: 820, minHeight: 480)
         }
         .windowResizability(.contentSize)
-        .commands { CommandGroup(replacing: .newItem) {} }
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { model.checkForUpdates() }
+            }
+        }
     }
 }

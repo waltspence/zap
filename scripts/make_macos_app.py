@@ -121,6 +121,12 @@ def main() -> int:
         version = md.version("zap-uninstaller")
     except Exception:  # noqa: BLE001
         pass
+    commit = ""
+    try:
+        commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+    except Exception:  # noqa: BLE001
+        pass
     plistlib.dump({
         "CFBundleName": "Frankly Zapped", "CFBundleDisplayName": "Frankly Zapped",
         "CFBundleIdentifier": "dev.waltspence.frankly-zapped",
@@ -129,6 +135,8 @@ def main() -> int:
         "CFBundlePackageType": "APPL", "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
         "LSApplicationCategoryType": "public.app-category.utilities",
+        "ZapRepoPath": str(ROOT),
+        "ZapBuildCommit": commit,
     }, (app / "Contents" / "Info.plist").open("wb"))
     subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True, capture_output=True)
     os.utime(app)  # nudge Finder to refresh the icon
