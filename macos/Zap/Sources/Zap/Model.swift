@@ -15,6 +15,8 @@ final class Model: ObservableObject {
     @Published var attention: [ActionResult] = []
     @Published var operations: [UndoOperation]?     // non-nil = undo sheet visible
     @Published var confirmTrash = false
+    @Published var fdaMissing = false      // launch gate: require Full Disk Access first
+    @Published var blockers: [Blocker] = []
 
     let client: ZapClient
 
@@ -22,6 +24,7 @@ final class Model: ObservableObject {
         if let client { self.client = client }
         else if let bin = ZapClient.locateBinary() { self.client = .live(binary: bin) }
         else { self.client = ZapClient { _ in throw ZapFailure(code: "not_installed", message: "zap not found; pip install -e . first") } }
+        fdaMissing = FullDiskAccess.granted() == false
         refresh()
     }
 
@@ -77,6 +80,8 @@ final class Model: ObservableObject {
         }
     }
 
+    func recheckAccess() { fdaMissing = FullDiskAccess.granted() == false }
+
     func showHistory() {
         let client = client
         run { try client.history() } then: { ops in
@@ -109,7 +114,9 @@ final class Model: ObservableObject {
                 self.busy = false
                 switch result {
                 case .success(let v): done(v)
-                case .failure(let e as ZapFailure): self.status = "\(e.code): \(e.message)"
+                case .failure(let e as ZapFailure):
+                    self.status = "\(e.code): \(e.message)"
+                    if e.code == "permission_required" { self.blockers = e.blockers ?? [] }
                 case .failure(let e): self.status = e.localizedDescription
                 }
             }

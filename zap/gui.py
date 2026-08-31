@@ -351,7 +351,49 @@ class ZapGUI:
         self.refresh_apps()
 
 
+FDA_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+
+
+def has_full_disk_access(home: Optional[str] = None) -> Optional[bool]:
+    """True/False when determinable, None off-macOS or inconclusive.
+
+    Probe: the per-user TCC database is readable only with Full Disk Access.
+    """
+    if sys.platform != "darwin":
+        return None
+    probe = Path(home or Path.home()) / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
+    try:
+        with open(probe, "rb"):
+            return True
+    except PermissionError:
+        return False
+    except OSError:
+        return None
+
+
+def require_full_disk_access() -> bool:
+    """Launch gate: block start until Full Disk Access is granted."""
+    if has_full_disk_access() is not False:
+        return True
+    root = tk.Tk()
+    root.withdraw()
+    go = messagebox.askyesno(
+        "Full Disk Access required",
+        "macOS protects app data (Containers, Mail, Safari…) even from you, so "
+        "removals would fail halfway.\n\n"
+        "1. Open System Settings > Privacy & Security > Full Disk Access\n"
+        "2. Enable your terminal (or Frankly Zapped)\n"
+        "3. Restart it and run zap-gui again\n\n"
+        "Open System Settings now?")
+    if go:
+        subprocess.run(["open", FDA_URL], check=False)
+    root.destroy()
+    return False
+
+
 def main() -> int:
+    if not require_full_disk_access():
+        return 6
     root = tk.Tk()
     try:
         ttk.Style().theme_use("aqua" if sys.platform == "darwin" else "clam")

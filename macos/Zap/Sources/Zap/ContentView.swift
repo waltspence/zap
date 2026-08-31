@@ -27,11 +27,19 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) { footer }
         .sheet(isPresented: Binding(get: { m.operations != nil }, set: { if !$0 { m.operations = nil } })) { UndoSheet() }
+        .sheet(isPresented: $m.fdaMissing) { AccessGate().interactiveDismissDisabled() }
         .alert("Move to Trash?", isPresented: $m.confirmTrash) {
             Button("Move to Trash", role: .destructive) { m.trash() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("\(m.selectedArtifacts.count) items of \(m.plan?.app.title ?? "") (\(humanBytes(m.selectedBytes))). You can restore them later with Undo.")
+        }
+        .alert("Permission needed", isPresented: Binding(get: { !m.blockers.isEmpty }, set: { if !$0 { m.blockers = [] } })) {
+            Button("Open Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL); m.blockers = [] }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(m.blockers.map { b in b.message + "\n" + b.paths.prefix(4).map { "  • \($0)" }.joined(separator: "\n") }
+                .joined(separator: "\n\n") + "\n\nNothing was removed.")
         }
         .alert("Some items were not removed", isPresented: Binding(get: { !m.attention.isEmpty }, set: { if !$0 { m.attention = [] } })) {
             Button("OK") {}
@@ -83,6 +91,33 @@ struct ContentView: View {
         }
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)
+    }
+}
+
+struct AccessGate: View {
+    @EnvironmentObject var m: Model
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.shield").font(.system(size: 40)).foregroundStyle(.orange)
+            Text("Full Disk Access required").font(.title2.bold())
+            Text("""
+            macOS protects app data (Containers, Mail, Safari…) even from you. \
+            Without Full Disk Access, removals will fail halfway. Grant it first:
+
+            1. Open System Settings → Privacy & Security → Full Disk Access
+            2. Enable Frankly Zapped
+            3. Reopen the app
+            """).frame(width: 400).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Quit") { NSApp.terminate(nil) }
+                Spacer()
+                Button("Check Again") { m.recheckAccess() }
+                Button("Open System Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL) }
+                    .keyboardShortcut(.defaultAction)
+            }.frame(width: 400)
+        }
+        .padding(24)
     }
 }
 

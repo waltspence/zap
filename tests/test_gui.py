@@ -141,3 +141,17 @@ class GuiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FdaProbeTest(unittest.TestCase):
+    def test_probe_states(self):
+        import tempfile
+        if sys.platform != "darwin":
+            self.assertIsNone(gui.has_full_disk_access())
+            return
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNone(gui.has_full_disk_access(td))  # no db → inconclusive
+            db = os.path.join(td, "Library", "Application Support", "com.apple.TCC")
+            os.makedirs(db)
+            open(os.path.join(db, "TCC.db"), "wb").close()
+            self.assertTrue(gui.has_full_disk_access(td))

@@ -58,5 +58,21 @@ do {
     check(ZapClient.locateBinary(env: ["HOME": "/nonexistent", "PATH": "/nonexistent"]) == nil, "locateBinary nil when absent")
     try? FileManager.default.removeItem(atPath: tmp)
 }
+do {
+    let c = stub(["uninstall": #"{"ok":false,"data":null,"error":{"code":"permission_required","message":"m","details":{"blockers":[{"code":"needs_root","message":"sudo pls","paths":["/a","/b"]}]}}}"#])
+    do { _ = try c.uninstall("g", only: ["a1"]); failures += 1; print("  FAIL blockers: did not throw") }
+    catch let e as ZapFailure {
+        check(e.code == "permission_required" && e.blockers?.first?.paths == ["/a", "/b"], "permission_required blockers decode")
+    } catch { failures += 1; print("  FAIL blockers: wrong error") }
+}
+do {
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("fda-\(UUID())").path
+    check(FullDiskAccess.granted(home: tmp) == nil, "FDA probe inconclusive for missing db")
+    try? FileManager.default.createDirectory(atPath: "\(tmp)/Library/Application Support/com.apple.TCC", withIntermediateDirectories: true)
+    FileManager.default.createFile(atPath: "\(tmp)/Library/Application Support/com.apple.TCC/TCC.db", contents: Data())
+    check(FullDiskAccess.granted(home: tmp) == true, "FDA probe true for readable db")
+    try? FileManager.default.removeItem(atPath: tmp)
+}
+
 print(failures == 0 ? "all checks passed" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

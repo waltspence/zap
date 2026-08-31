@@ -10,7 +10,24 @@ public struct Envelope<T: Decodable>: Decodable {
 public struct ZapFailure: Decodable, Error, Equatable {
     public let code: String
     public let message: String
-    public init(code: String, message: String) { self.code = code; self.message = message }
+    public let blockers: [Blocker]?
+
+    public init(code: String, message: String, blockers: [Blocker]? = nil) {
+        self.code = code; self.message = message; self.blockers = blockers
+    }
+
+    enum CodingKeys: String, CodingKey { case code, message, details }
+    enum DetailsKeys: String, CodingKey { case blockers }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        code = try c.decode(String.self, forKey: .code)
+        message = try c.decode(String.self, forKey: .message)
+        let d = try? c.nestedContainer(keyedBy: DetailsKeys.self, forKey: .details)
+        blockers = try? d?.decodeIfPresent([Blocker].self, forKey: .blockers)
+    }
+
+    public static func == (a: ZapFailure, b: ZapFailure) -> Bool { a.code == b.code && a.message == b.message }
 }
 
 public struct InstalledApp: Decodable, Identifiable, Hashable {
