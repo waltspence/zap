@@ -236,7 +236,7 @@ MIT. See [LICENSE](LICENSE).
 
 ## GUI (optional)
 
-**macOS — native.** `macos/Zap` is a small SwiftUI app (no Xcode needed, just
+**macOS — native.** `macos/Zap` builds **Frankly Zapped.app**, a small SwiftUI app (no Xcode needed, just
 the Command Line Tools). It shells out to `zap --json`, so the CLI's safety
 rules, tiers, Trash and undo log stay in charge. Sidebar of apps with a
 filter; the scan as a table with checkboxes (exact matches pre-ticked,
@@ -245,7 +245,7 @@ name-only/derived greyed until you tick them or flip **Aggressive** /
 **Undo…** lists past operations to restore.
 
 ```sh
-make app                                 # → ~/Applications/Zap.app
+make app                                 # → ~/Applications/Frankly Zapped.app
 python scripts/make_macos_app.py --icon my-icon.png   # custom icon
 make gui-check                           # build + run ZapKit checks
 ```

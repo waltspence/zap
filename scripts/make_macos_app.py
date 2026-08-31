@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the native Zap.app (SwiftUI) — macOS only, needs the Command Line
+"""Build the native 'Frankly Zapped.app' (SwiftUI) — macOS only, needs the Command Line
 Tools (swift, sips, iconutil). No Xcode required.
 
 Usage: python scripts/make_macos_app.py [--dest ~/Applications] [--icon file.png] [--tk]
@@ -81,7 +81,7 @@ def main() -> int:
         print("macOS only", file=sys.stderr)
         return 2
 
-    app = Path(args.dest).expanduser() / "Zap.app"
+    app = Path(args.dest).expanduser() / "Frankly Zapped.app"
     if app.exists():
         shutil.rmtree(app)
     (app / "Contents" / "MacOS").mkdir(parents=True)
@@ -122,8 +122,8 @@ def main() -> int:
     except Exception:  # noqa: BLE001
         pass
     plistlib.dump({
-        "CFBundleName": "Zap", "CFBundleDisplayName": "Zap",
-        "CFBundleIdentifier": "dev.waltspence.zap",
+        "CFBundleName": "Frankly Zapped", "CFBundleDisplayName": "Frankly Zapped",
+        "CFBundleIdentifier": "dev.waltspence.frankly-zapped",
         "CFBundleVersion": version, "CFBundleShortVersionString": version,
         "CFBundleExecutable": "zap", "CFBundleIconFile": "zap",
         "CFBundlePackageType": "APPL", "LSMinimumSystemVersion": "11.0",

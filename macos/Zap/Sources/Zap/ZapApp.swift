@@ -6,7 +6,7 @@ struct ZapApp: App {
     @StateObject private var model = Model()
 
     var body: some Scene {
-        WindowGroup("Zap") {
+        WindowGroup("Frankly Zapped") {
             ContentView().environmentObject(model)
                 .frame(minWidth: 820, minHeight: 480)
         }
