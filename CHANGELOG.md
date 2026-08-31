@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Permission preflight: `zap uninstall --yes` refuses up front (exit 6,
+  `permission_required`, per-blocker paths) when selected items need root or
+  macOS Full Disk Access, instead of failing halfway. `--skip-preflight` opts out.
+- Actionable `permission denied` reasons: root-owned/App Store items say to
+  rerun with sudo or use Finder; TCC-protected paths point at Full Disk Access.
+
 ## 0.2.0 — 2026-08-28
 
 Hardening release. The JSON schema stays at version 1; every change to the
