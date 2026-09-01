@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & package (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Package .app
+        run: bash package.sh
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Featherweight.app
+          path: Featherweight.app
+          if-no-files-found: error

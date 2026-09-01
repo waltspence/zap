@@ -1,0 +1,497 @@
+{
+  "categories": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "icon": "brain.head.profile",
+      "risk": "safe",
+      "group": "AI & Editors",
+      "description": "Cache and temporary data from the Claude desktop app. Your conversations and settings are kept; caches are rebuilt on next launch.",
+      "paths": [
+        "~/Library/Application Support/Claude/Cache",
+        "~/Library/Application Support/Claude/Code Cache",
+        "~/Library/Application Support/Claude/GPUCache",
+        "~/Library/Application Support/Claude/Local Storage",
+        "~/Library/Application Support/Claude/local-agent-mode-sessions",
+        "~/Library/Application Support/Claude/IndexedDB",
+        "~/Library/Application Support/Claude/vm_bundles",
+        "~/Library/Caches/com.anthropic.claudefordesktop.ShipIt"
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "icon": "sparkles",
+      "risk": "safe",
+      "group": "AI & Editors",
+      "description": "Cache files from the ChatGPT desktop app, rebuilt automatically as you use it.",
+      "paths": [
+        "~/Library/Application Support/com.openai.chat/Cache",
+        "~/Library/Caches/com.openai.chat"
+      ]
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "icon": "cursorarrow.square",
+      "risk": "safe",
+      "group": "AI & Editors",
+      "description": "Cursor's render and code caches. Settings, extensions, and projects are untouched; caches regenerate on next launch.",
+      "paths": [
+        "~/Library/Application Support/Cursor/Cache",
+        "~/Library/Application Support/Cursor/Code Cache",
+        "~/Library/Application Support/Cursor/GPUCache",
+        "~/Library/Application Support/Cursor/Local Storage",
+        "~/Library/Application Support/Cursor/IndexedDB"
+      ]
+    },
+    {
+      "id": "vscode",
+      "name": "VS Code",
+      "icon": "chevron.left.forwardslash.chevron.right",
+      "risk": "safe",
+      "group": "AI & Editors",
+      "description": "VS Code caches, logs, and cached extension data. Settings, extensions, and your projects are untouched.",
+      "paths": [
+        "~/Library/Application Support/Code/Cache",
+        "~/Library/Application Support/Code/Code Cache",
+        "~/Library/Application Support/Code/GPUCache",
+        "~/Library/Application Support/Code/Local Storage",
+        "~/Library/Application Support/Code/IndexedDB",
+        "~/Library/Application Support/Code/CachedData",
+        "~/Library/Application Support/Code/logs"
+      ]
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama Models",
+      "icon": "cpu.fill",
+      "risk": "danger",
+      "group": "AI & Editors",
+      "description": "Downloaded AI models. Deleting means re-downloading many gigabytes per model — only clear this if you no longer use Ollama.",
+      "paths": [
+        "~/.ollama/models"
+      ]
+    },
+    {
+      "id": "comet",
+      "name": "Comet Browser",
+      "icon": "globe",
+      "risk": "safe",
+      "group": "Browsers",
+      "description": "Comet's cache and site storage. Clearing site storage can sign you out of websites; pages load slower on first visit afterward.",
+      "paths": [
+        "~/Library/Caches/Comet",
+        "~/Library/Application Support/Comet/Default/Cache",
+        "~/Library/Application Support/Comet/Default/Code Cache",
+        "~/Library/Application Support/Comet/Default/GPUCache",
+        "~/Library/Application Support/Comet/Default/DawnCache",
+        "~/Library/Application Support/Comet/Default/IndexedDB",
+        "~/Library/Application Support/Comet/Default/Local Storage",
+        "~/Library/Application Support/Comet/Default/Session Storage",
+        "~/Library/Application Support/Comet/Default/Service Worker"
+      ]
+    },
+    {
+      "id": "edge",
+      "name": "Microsoft Edge",
+      "icon": "e.square.fill",
+      "risk": "safe",
+      "group": "Browsers",
+      "description": "Microsoft Edge's cache and site storage. Clearing site storage can sign you out of websites; pages load slower on first visit afterward.",
+      "paths": [
+        "~/Library/Caches/Microsoft Edge",
+        "~/Library/Application Support/Microsoft Edge/Default/Cache",
+        "~/Library/Application Support/Microsoft Edge/Default/Code Cache",
+        "~/Library/Application Support/Microsoft Edge/Default/GPUCache",
+        "~/Library/Application Support/Microsoft Edge/Default/IndexedDB",
+        "~/Library/Application Support/Microsoft Edge/Default/Service Worker"
+      ]
+    },
+    {
+      "id": "firefox",
+      "name": "Firefox",
+      "icon": "flame.fill",
+      "risk": "safe",
+      "group": "Browsers",
+      "description": "Firefox's disk cache. History and logins are unaffected; pages load slower on first visit afterward.",
+      "paths": [
+        "~/Library/Caches/Firefox",
+        "~/Library/Caches/Mozilla"
+      ]
+    },
+    {
+      "id": "brave",
+      "name": "Brave Browser",
+      "icon": "shield.fill",
+      "risk": "safe",
+      "group": "Browsers",
+      "description": "Brave's disk cache. History and logins are unaffected; pages load slower on first visit afterward.",
+      "paths": [
+        "~/Library/Caches/BraveSoftware",
+        "~/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cache"
+      ]
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "icon": "message.fill",
+      "risk": "safe",
+      "group": "Browsers",
+      "description": "Discord's cached images and media, rebuilt as you use Discord.",
+      "paths": [
+        "~/Library/Application Support/discord/Cache",
+        "~/Library/Application Support/discord/Code Cache",
+        "~/Library/Application Support/discord/GPUCache"
+      ]
+    },
+    {
+      "id": "xcode-derived",
+      "name": "Xcode DerivedData",
+      "icon": "hammer.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Xcode's build intermediates and indexes. Safe to delete — the next build of each project is slower while Xcode rebuilds them.",
+      "paths": [
+        "~/Library/Developer/Xcode/DerivedData"
+      ]
+    },
+    {
+      "id": "xcode-archives",
+      "name": "Xcode Archives",
+      "icon": "archivebox.fill",
+      "risk": "warning",
+      "group": "Dev Tools",
+      "description": "Archived builds (.xcarchive) with debug symbols. You need these to symbolicate crash reports from shipped versions — keep archives for apps you've released.",
+      "paths": [
+        "~/Library/Developer/Xcode/Archives"
+      ]
+    },
+    {
+      "id": "xcode-simulators",
+      "name": "iOS Simulators (removes stale devices)",
+      "icon": "iphone",
+      "risk": "warning",
+      "group": "Dev Tools",
+      "description": "Simulator devices and their data. The size shown covers all simulators, but cleaning only removes stale/unavailable ones via simctl.",
+      "paths": [
+        "~/Library/Developer/CoreSimulator/Devices"
+      ],
+      "cleanCommand": "xcrun simctl delete unavailable >/dev/null 2>&1"
+    },
+    {
+      "id": "xcode-cache",
+      "name": "Xcode Cache",
+      "icon": "x.square.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Xcode's general caches and Interface Builder support files, regenerated automatically.",
+      "paths": [
+        "~/Library/Caches/com.apple.dt.Xcode",
+        "~/Library/Developer/Xcode/UserData/IB Support"
+      ]
+    },
+    {
+      "id": "npm",
+      "name": "npm Cache",
+      "icon": "square.3.layers.3d.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "npm's download cache of package tarballs. The next install re-downloads what it needs; nothing in your projects changes.",
+      "paths": [
+        "~/.npm/_cacache"
+      ]
+    },
+    {
+      "id": "yarn",
+      "name": "Yarn Cache",
+      "icon": "square.3.layers.3d.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Yarn's download cache. The next install re-downloads what it needs; nothing in your projects changes.",
+      "paths": [
+        "~/Library/Caches/Yarn"
+      ]
+    },
+    {
+      "id": "pnpm",
+      "name": "pnpm Store",
+      "icon": "square.3.layers.3d.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "pnpm's shared package store. Existing node_modules keep working; future installs re-download packages.",
+      "paths": [
+        "~/Library/pnpm/store"
+      ]
+    },
+    {
+      "id": "homebrew",
+      "name": "Homebrew Cache",
+      "icon": "mug.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Downloaded bottles and old formula versions. Homebrew re-downloads on demand; installed software is untouched.",
+      "paths": [
+        "~/Library/Caches/Homebrew"
+      ]
+    },
+    {
+      "id": "pip",
+      "name": "pip Cache",
+      "icon": "shippingbox.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Cached Python package downloads. pip re-downloads on the next install.",
+      "paths": [
+        "~/Library/Caches/pip"
+      ]
+    },
+    {
+      "id": "cocoapods",
+      "name": "CocoaPods",
+      "icon": "leaf.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Cached pod specs and downloads, re-fetched on the next pod install.",
+      "paths": [
+        "~/Library/Caches/CocoaPods"
+      ]
+    },
+    {
+      "id": "cargo",
+      "name": "Cargo Cache",
+      "icon": "gear",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Rust registry caches and git checkouts. Re-downloaded on the next cargo build; installed binaries are untouched.",
+      "paths": [
+        "~/.cargo/registry/cache",
+        "~/.cargo/registry/src",
+        "~/.cargo/git/checkouts"
+      ]
+    },
+    {
+      "id": "go-build",
+      "name": "Go Build Cache",
+      "icon": "g.square.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Go's compiled-object cache, rebuilt on the next go build.",
+      "paths": [
+        "~/Library/Caches/go-build"
+      ]
+    },
+    {
+      "id": "go-mod",
+      "name": "Go Module Cache",
+      "icon": "g.square.fill",
+      "risk": "warning",
+      "group": "Dev Tools",
+      "description": "Downloaded Go module sources shared by all your Go projects. Cleaned with go clean -modcache; the next build re-downloads dependencies.",
+      "paths": [
+        "~/go/pkg/mod"
+      ],
+      "cleanCommand": "export PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin\"; go clean -modcache >/dev/null 2>&1 || { chmod -R u+w \"$HOME/go/pkg/mod\" 2>/dev/null; rm -rf \"$HOME/go/pkg/mod\"; }"
+    },
+    {
+      "id": "gradle",
+      "name": "Gradle Caches",
+      "icon": "g.circle.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Gradle's dependency and build caches. The next build re-downloads dependencies and recompiles, which can take a while.",
+      "paths": [
+        "~/.gradle/caches"
+      ]
+    },
+    {
+      "id": "jetbrains",
+      "name": "JetBrains IDEs",
+      "icon": "paintbrush.fill",
+      "risk": "safe",
+      "group": "Dev Tools",
+      "description": "Caches, indexes, and logs for IntelliJ-family IDEs. Projects and settings are untouched, but IDEs re-index on next launch — slow for big projects.",
+      "paths": [
+        "~/Library/Caches/JetBrains",
+        "~/Library/Logs/JetBrains"
+      ]
+    },
+    {
+      "id": "android",
+      "name": "Android Studio",
+      "icon": "a.square.fill",
+      "risk": "warning",
+      "group": "Dev Tools",
+      "description": "Android SDK cache and emulator images (AVDs). Deleting AVDs removes your configured emulators and their data.",
+      "paths": [
+        "~/.android/cache",
+        "~/.android/avd"
+      ]
+    },
+    {
+      "id": "docker-clean",
+      "name": "Docker (prune unused)",
+      "icon": "shippingbox.fill",
+      "risk": "warning",
+      "group": "Dev Tools",
+      "description": "Space Docker reports as reclaimable: stopped containers, dangling images, unused networks, and build cache. Cleaned with docker system prune — volumes are kept.",
+      "scanCommand": "export PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin\"; docker system df --format '{{.Reclaimable}}' 2>/dev/null | awk '{v=$1; if (v ~ /GB$/) {sub(/GB$/,\"\",v); s+=v*1048576} else if (v ~ /MB$/) {sub(/MB$/,\"\",v); s+=v*1024} else if (v ~ /kB$/) {sub(/kB$/,\"\",v); s+=v} else if (v ~ /B$/) {sub(/B$/,\"\",v); s+=v/1024}} END {if (s>0) printf \"%.0f\\tdocker\\n\", s}'",
+      "cleanCommand": "export PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin\"; docker system prune -f >/dev/null 2>&1"
+    },
+    {
+      "id": "old-venvs",
+      "name": "Old Virtualenvs (>90d)",
+      "icon": "square.stack.3d.up",
+      "risk": "warning",
+      "group": "Dev Tools",
+      "description": "Python virtualenvs in your project folders untouched for 90+ days. Recreate one any time with pip install -r requirements.txt.",
+      "scanCommand": "find {PROJECT_ROOTS} -name 'venv' -maxdepth 5 -type d -mtime +90 2>/dev/null -exec du -sk {} + | sort -rn | head -15"
+    },
+    {
+      "id": "node-modules",
+      "name": "node_modules (projects untouched >1yr)",
+      "icon": "folder.fill.badge.gearshape",
+      "risk": "warning",
+      "group": "Deep Clean",
+      "description": "node_modules folders in projects that haven't been touched in over a year. Restore any time with npm install.",
+      "scanCommand": "find {PROJECT_ROOTS} -name node_modules -maxdepth 5 -type d 2>/dev/null | while read nm; do parent=$(dirname \"$nm\"); if [ -n \"$(find \"$parent\" -maxdepth 0 -mtime +365 2>/dev/null)\" ]; then du -sk \"$nm\" 2>/dev/null; fi; done | sort -rn | head -20"
+    },
+    {
+      "id": "node-modules-all",
+      "name": "node_modules (all, for reference)",
+      "icon": "folder.fill",
+      "risk": "danger",
+      "group": "Deep Clean",
+      "description": "Every node_modules folder in your project folders, including active ones. Shown for size reference only — Featherweight will not delete these, because removing an active project's dependencies breaks its build.",
+      "scanCommand": "find {PROJECT_ROOTS} -name 'node_modules' -maxdepth 5 -type d 2>/dev/null -exec du -sk {} + | sort -rn | head -30"
+    },
+    {
+      "id": "large-files",
+      "name": "Large Files (>100MB, >30d)",
+      "icon": "doc.fill.badge.ellipsis",
+      "risk": "warning",
+      "group": "Deep Clean",
+      "description": "Files over 100 MB in Desktop, Downloads, and Documents not modified in 30+ days. These are your own files — review the list in the clean log; they go to the Trash.",
+      "scanCommand": "find ~/Desktop ~/Downloads ~/Documents -type f -size +100M -mtime +30 2>/dev/null -exec du -sk {} + | sort -rn | head -20"
+    },
+    {
+      "id": "old-downloads",
+      "name": "Old Downloads (>30d)",
+      "icon": "arrow.down.circle",
+      "risk": "warning",
+      "group": "Deep Clean",
+      "description": "Everything in your Downloads folder older than 30 days. These are your own files — they go to the Trash, and every removal is recorded in the clean log.",
+      "scanCommand": "find ~/Downloads -type f -mtime +30 2>/dev/null -exec du -sk {} + | sort -rn | head -30"
+    },
+    {
+      "id": "app-leftovers",
+      "name": "App Leftovers",
+      "icon": "app.badge.checkmark",
+      "risk": "danger",
+      "group": "Deep Clean",
+      "description": "Folders in ~/Library/Application Support whose app no longer appears to be installed — data orphaned by uninstalled apps. Detection uses Spotlight and can misfire for command-line tools, plugins, or apps installed outside /Applications, so Featherweight shows this for reference only and never cleans it automatically. Review each folder in Finder before deleting anything by hand.",
+      "scanCommand": "bash \"{RESOURCES}/app-leftovers.sh\""
+    },
+    {
+      "id": "imessage",
+      "name": "iMessage Attachments",
+      "icon": "message.badge.fill",
+      "risk": "warning",
+      "group": "System",
+      "description": "Photos, videos, and files received in Messages. Deleting removes them from your message history on this Mac; they may re-download from iCloud.",
+      "paths": [
+        "~/Library/Messages/Attachments"
+      ]
+    },
+    {
+      "id": "mail",
+      "name": "Mail Downloads",
+      "icon": "envelope.fill",
+      "risk": "warning",
+      "group": "System",
+      "description": "Attachments Mail downloaded for offline viewing. Mail fetches them from the server again when you reopen the message.",
+      "paths": [
+        "~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads"
+      ]
+    },
+    {
+      "id": "trash",
+      "name": "Trash",
+      "icon": "trash.fill",
+      "risk": "safe",
+      "group": "System",
+      "description": "Everything currently in your Trash. Cleaning empties it permanently — this is the one category that can't be undone, because the files are already in the Trash.",
+      "paths": [
+        "~/.Trash"
+      ],
+      "cleanCommand": "find \"$HOME/.Trash\" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null"
+    },
+    {
+      "id": "system-caches",
+      "name": "System Caches",
+      "icon": "gearshape.2.fill",
+      "risk": "safe",
+      "group": "System",
+      "description": "The contents of ~/Library/Caches — every app's scratch space. Apps rebuild caches as needed, so first launches may be slower. Other cache categories above are already excluded from this total.",
+      "paths": [
+        "~/Library/Caches"
+      ],
+      "cleanMode": "contents"
+    },
+    {
+      "id": "system-logs",
+      "name": "System Logs",
+      "icon": "doc.text.fill",
+      "risk": "safe",
+      "group": "System",
+      "description": "Crash reports and diagnostic logs. Only useful if you're actively debugging a problem.",
+      "paths": [
+        "~/Library/Logs/DiagnosticReports",
+        "~/Library/Logs/CrashReporter"
+      ]
+    },
+    {
+      "id": "ios-device-support",
+      "name": "iOS Device Support",
+      "icon": "ipad",
+      "risk": "danger",
+      "group": "System",
+      "description": "Debug symbols Xcode extracted from every iOS version you've plugged in. Xcode re-extracts them on the next device connection — several minutes per device — and deleting mid-session can break debugging.",
+      "paths": [
+        "~/Library/Developer/Xcode/iOS DeviceSupport"
+      ]
+    },
+    {
+      "id": "timemachine",
+      "name": "Time Machine Snapshots (est.)",
+      "icon": "clock.arrow.circlepath",
+      "risk": "safe",
+      "group": "System",
+      "description": "Local Time Machine snapshots stored on this disk. The size is a rough estimate — macOS doesn't report exact snapshot sizes. Cleaned with tmutil; backups on your external Time Machine drive are untouched.",
+      "scanCommand": "n=$(tmutil listlocalsnapshots / 2>/dev/null | grep -c 'com.apple.TimeMachine'); if [ \"$n\" -gt 0 ]; then printf '%s\\ttm-snapshots\\n' \"$((n * 500000))\"; fi",
+      "cleanCommand": "tmutil thinlocalsnapshots / 999999999999999 4 >/dev/null 2>&1"
+    },
+    {
+      "id": "ios-backups",
+      "name": "iOS Backups",
+      "icon": "iphone.gen3",
+      "risk": "warning",
+      "group": "System",
+      "description": "Local iPhone/iPad backups stored on this Mac. Deleting means you can't restore a device from them — make sure the device is backed up to iCloud first.",
+      "paths": [
+        "~/Library/Application Support/MobileSync/Backup"
+      ]
+    },
+    {
+      "id": "thumbnail-cache",
+      "name": "QuickLook Thumbnails",
+      "icon": "photo.on.rectangle.angled",
+      "risk": "safe",
+      "group": "System",
+      "description": "Preview thumbnails macOS generated for Quick Look, regenerated on demand.",
+      "paths": [
+        "~/Library/Caches/com.apple.QuickLook.thumbnailcache"
+      ]
+    }
+  ]
+}
