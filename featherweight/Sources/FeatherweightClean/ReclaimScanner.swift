@@ -12,6 +12,7 @@ public final class ReclaimScanner: ObservableObject {
     @Published public var totalReclaimable: UInt64 = 0
     @Published public var totalSelected: UInt64 = 0
     @Published public var lastCleanedBytes: UInt64 = 0
+    @Published public var lastTrashedBytes: UInt64 = 0
     @Published public var lastCleanedDate: Date?
     @Published public var scanProgress: Double = 0
     @Published public var searchText = ""
@@ -71,7 +72,7 @@ public final class ReclaimScanner: ObservableObject {
     }
 
     private func loadCategories() {
-        guard let url = Bundle.module.url(forResource: "categories", withExtension: "json") else {
+        guard let url = ResourceBundle.bundle.url(forResource: "categories", withExtension: "json") else {
             loadError = "categories.json is missing from the app's resources."
             return
         }
@@ -89,11 +90,12 @@ public final class ReclaimScanner: ObservableObject {
               let history = try? JSONDecoder().decode(CleanHistory.self, from: data)
         else { return }
         lastCleanedBytes = history.bytes
+        lastTrashedBytes = history.trashedBytes
         lastCleanedDate = history.date
     }
 
     private func saveHistory() {
-        let history = CleanHistory(bytes: lastCleanedBytes, date: Date())
+        let history = CleanHistory(bytes: lastCleanedBytes, trashedBytes: lastTrashedBytes, date: Date())
         if let data = try? JSONEncoder().encode(history) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
@@ -160,8 +162,15 @@ public final class ReclaimScanner: ObservableObject {
                     }
                 }
                 for await (i, size, denied) in group {
+                    // A cancelled scan must not overwrite the idle states
+                    // cancelScan() installed (or a newer scan's results) with
+                    // late-arriving sizes from still-draining child tasks.
+                    if Task.isCancelled { continue }
                     results[i].sizeBytes = size
-                    results[i].status = (denied && size == 0) ? .error("Needs Full Disk Access") : .done
+                    // denied with a nonzero size means a partial count: some
+                    // descendants were unreadable, so still surface the FDA
+                    // state rather than presenting the scan as complete.
+                    results[i].status = denied ? .error("Needs Full Disk Access") : .done
                 }
             }
 
@@ -206,7 +215,14 @@ public final class ReclaimScanner: ObservableObject {
     public func clean() async {
         isCleaning = true
         var totalFreed: UInt64 = 0
+        var totalTrashed: UInt64 = 0
         var logEntries: [CleanLogger.Entry] = []
+
+        // Same overlap set the scan subtracts, so cleaning a parent category
+        // (System Caches) never removes a nested category the user deselected.
+        let allPlainPaths = results.flatMap { r in
+            r.category.paths.map { (id: r.category.id, path: expand($0)) }
+        }
 
         for result in results where result.selected {
             let category = result.category
@@ -228,8 +244,11 @@ public final class ReclaimScanner: ObservableObject {
                     allowHardDelete: allowHardDelete
                 )
             case .trashContents:
+                let paths = category.paths.map { expand($0) }
                 report = await CleanEngine.trashContents(
-                    of: category.paths.map { expand($0) }, allowHardDelete: allowHardDelete
+                    of: paths,
+                    excluding: PathUtils.exclusions(ownId: category.id, ownPaths: paths, all: allPlainPaths),
+                    allowHardDelete: allowHardDelete
                 )
             case .trashPaths:
                 report = await CleanEngine.trashPaths(
@@ -238,17 +257,21 @@ public final class ReclaimScanner: ObservableObject {
             }
 
             totalFreed += report.freedBytes
+            totalTrashed += report.trashedBytes
             logEntries.append(CleanLogger.Entry(
                 category: category.name, freedBytes: report.freedBytes,
+                trashedBytes: report.trashedBytes,
                 removals: report.removals, skippedPaths: report.skippedPaths
             ))
         }
 
         CleanLogger.append(entries: logEntries)
         lastCleanedBytes = totalFreed
+        lastTrashedBytes = totalTrashed
         saveHistory()
         isCleaning = false
-        await performScan()
+        // Rescan through the normal scan lifecycle so Stop can cancel it.
+        scan()
     }
 
     // MARK: - Path & token resolution
@@ -262,7 +285,7 @@ public final class ReclaimScanner: ObservableObject {
     /// (the zap binary path, shell-quoted; empty when zap isn't installed).
     private func resolveTokens(_ command: String) -> String {
         var resolved = command.replacingOccurrences(
-            of: "{RESOURCES}", with: Bundle.module.resourcePath ?? ""
+            of: "{RESOURCES}", with: ResourceBundle.bundle.resourcePath ?? ""
         )
         let roots = projectRoots
             .map { expand($0) }

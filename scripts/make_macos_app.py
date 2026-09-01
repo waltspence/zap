@@ -108,6 +108,10 @@ def main() -> int:
         bin_path = subprocess.run(["swift", "build", "-c", "release", "--show-bin-path"], cwd=pkg,
                                   check=True, capture_output=True, text=True).stdout.strip()
         shutil.copy2(Path(bin_path) / "Zap", launcher)
+        # SwiftPM resource bundles (categories.json, helper scripts) must
+        # travel with the app; the code looks for them in Contents/Resources.
+        for bundle in Path(bin_path).glob("*.bundle"):
+            shutil.copytree(bundle, app / "Contents" / "Resources" / bundle.name)
 
     with tempfile.TemporaryDirectory() as td:
         png = Path(args.icon) if args.icon else Path(td) / "bolt.png"

@@ -380,8 +380,8 @@
       "icon": "arrow.down.circle",
       "risk": "warning",
       "group": "Deep Clean",
-      "description": "Everything in your Downloads folder older than 30 days. These are your own files — they go to the Trash, and every removal is recorded in the clean log.",
-      "scanCommand": "find ~/Downloads -type f -mtime +30 2>/dev/null -exec du -sk {} + | sort -rn | head -30"
+      "description": "Everything in your Downloads folder older than 30 days, except files over 100 MB — those appear under Large Files instead, so the two totals never count the same file twice. These are your own files — they go to the Trash, and every removal is recorded in the clean log.",
+      "scanCommand": "find ~/Downloads -type f -mtime +30 ! -size +100M 2>/dev/null -exec du -sk {} + | sort -rn | head -30"
     },
     {
       "id": "app-leftovers",
@@ -418,9 +418,9 @@
       "id": "trash",
       "name": "Trash",
       "icon": "trash.fill",
-      "risk": "safe",
+      "risk": "warning",
       "group": "System",
-      "description": "Everything currently in your Trash. Cleaning empties it permanently — this is the one category that can't be undone, because the files are already in the Trash.",
+      "description": "Everything currently in your Trash. Cleaning empties it permanently — this is the one category that can't be undone, because the files are already in the Trash. Select it deliberately; it is never included in a default clean.",
       "paths": [
         "~/.Trash"
       ],

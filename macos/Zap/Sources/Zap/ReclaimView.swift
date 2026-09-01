@@ -49,15 +49,23 @@ struct ReclaimView: View {
         }
     }
 
+    private var lastCleanSummary: String {
+        var parts: [String] = []
+        if scanner.lastCleanedBytes > 0 { parts.append("\(humanBytes(Int64(scanner.lastCleanedBytes))) freed") }
+        if scanner.lastTrashedBytes > 0 { parts.append("\(humanBytes(Int64(scanner.lastTrashedBytes))) to Trash") }
+        return parts.joined(separator: ", ")
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("Reclaim Space").font(.title2.bold())
             if scanner.totalReclaimable > 0 {
                 Text("\(humanBytes(Int64(scanner.totalReclaimable))) found").foregroundStyle(.secondary)
             }
-            if scanner.lastCleanedBytes > 0, scanner.lastCleanedDate != nil {
-                Text("· \(humanBytes(Int64(scanner.lastCleanedBytes))) freed last clean")
+            if scanner.lastCleanedDate != nil, scanner.lastCleanedBytes + scanner.lastTrashedBytes > 0 {
+                Text("· last clean: " + lastCleanSummary)
                     .foregroundStyle(.green)
+                    .help("Trashed items stay on disk until you empty the Trash")
             }
             Spacer()
             TextField("Filter", text: $scanner.searchText).frame(width: 140)
@@ -84,9 +92,15 @@ struct ReclaimView: View {
                 case .scanning: ProgressView().controlSize(.small)
                 case .done: Text(r.formatted).monospacedDigit()
                         .foregroundStyle(r.sizeBytes > 0 ? .primary : .secondary)
-                case .error: Label("No access", systemImage: "lock.fill")
-                        .foregroundStyle(.orange)
-                        .help("Needs Full Disk Access")
+                case .error:
+                    // A nonzero size here is a partial count: readable files
+                    // were summed, but protected descendants were not.
+                    HStack(spacing: 4) {
+                        if r.sizeBytes > 0 { Text(r.formatted).monospacedDigit() }
+                        Image(systemName: "lock.fill")
+                    }
+                    .foregroundStyle(.orange)
+                    .help(r.sizeBytes > 0 ? "Partial — needs Full Disk Access" : "Needs Full Disk Access")
                 }
             }.width(90)
             TableColumn("Risk") { r in

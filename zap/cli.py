@@ -204,6 +204,15 @@ def cmd_scan(ctx: Context, args) -> int:
 
 
 def cmd_orphans(ctx: Context, args) -> int:
+    if getattr(args, "du", False) and ctx.json:
+        # --du exists to break the JSON contract on purpose (plain KB<TAB>path
+        # lines for du-style consumers); combined with --json the caller's
+        # intent is ambiguous, so refuse rather than emit non-JSON on stdout.
+        raise ZapError(
+            "usage_error",
+            "--du prints plain 'KB<TAB>path' lines and cannot honor --json; "
+            "drop --du (the orphans JSON envelope already includes sizes).",
+        )
     plan = ctx.engine.orphans()
     _maybe_write_plan(args, plan)
     if getattr(args, "du", False):

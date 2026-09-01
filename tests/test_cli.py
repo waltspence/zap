@@ -155,6 +155,17 @@ class CliContractTests(unittest.TestCase):
                 self.assertTrue(kb.isdigit() and int(kb) >= 1, ln)
                 self.assertTrue(path.startswith("/"), ln)
 
+    def test_orphans_du_rejects_json(self):
+        # --du deliberately emits plain lines; with --json it must fail with a
+        # structured usage error, never non-JSON output under the JSON flag.
+        with TempTree() as root:
+            build_widget_tree(root)
+            env = darwin_env(root)
+            code, out, _ = run(["--json", "orphans", "--du"], env)
+            self.assertNotEqual(code, 0)
+            payload = json.loads(out)
+            self.assertEqual(payload["error"]["code"], "usage_error")
+
 
 if __name__ == "__main__":
     unittest.main()

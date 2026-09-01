@@ -127,6 +127,21 @@ public struct ScanResult: Identifiable, Sendable {
 
 public struct CleanHistory: Codable, Sendable {
     public let bytes: UInt64
+    /// Bytes moved to the Trash by the last clean (recoverable, not yet
+    /// freed). Absent in records written before this field existed.
+    public let trashedBytes: UInt64
     public let date: Date
-    public init(bytes: UInt64, date: Date) { self.bytes = bytes; self.date = date }
+
+    public init(bytes: UInt64, trashedBytes: UInt64 = 0, date: Date) {
+        self.bytes = bytes
+        self.trashedBytes = trashedBytes
+        self.date = date
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bytes = try container.decode(UInt64.self, forKey: .bytes)
+        trashedBytes = try container.decodeIfPresent(UInt64.self, forKey: .trashedBytes) ?? 0
+        date = try container.decode(Date.self, forKey: .date)
+    }
 }
