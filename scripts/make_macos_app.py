@@ -89,10 +89,10 @@ def main() -> int:
     launcher = app / "Contents" / "MacOS" / "zap"
 
     if args.tk:
-        gui_bin = ROOT / ".venv" / "bin" / "zap-gui"
-        if not gui_bin.exists():
-            gui_bin = Path(shutil.which("zap-gui") or "")
-        if not gui_bin.exists():
+        venv_gui = ROOT / ".venv" / "bin" / "zap-gui"
+        which_gui = shutil.which("zap-gui")
+        gui_bin = venv_gui if venv_gui.exists() else (Path(which_gui) if which_gui else None)
+        if gui_bin is None or not gui_bin.exists():
             print("zap-gui not found; run `pip install -e .` first", file=sys.stderr)
             return 1
         # Launch Services refuses to `open` a bundle whose executable is a shell

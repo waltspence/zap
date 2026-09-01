@@ -219,7 +219,7 @@ class ZapGUI:
         app = self._current_app()
         if app is None:
             return
-        args = ["scan", app["identifier"]]
+        args = ["scan", app.get("path") or app["identifier"]]
         if self.aggressive.get():
             args.append("--aggressive")
         if self.low.get():
@@ -292,7 +292,7 @@ class ZapGUI:
         name = app.get("display_name") or app["name"]
         if not messagebox.askokcancel("Move to Trash", f"Move {len(ids)} items of {name} to the Trash?\n\nYou can undo this from the Undo… button."):
             return
-        args = ["uninstall", app["identifier"], "--yes", "--include-low", "--aggressive", "--only", ",".join(ids)]
+        args = ["uninstall", app.get("path") or app["identifier"], "--yes", "--include-low", "--aggressive", "--only", ",".join(ids)]
         self._bg("uninstall", args)
 
     def _on_uninstall(self, env: dict) -> None:
