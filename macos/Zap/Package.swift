@@ -6,9 +6,17 @@ import PackageDescription
 let package = Package(
     name: "Zap",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // The disk-cleanup ("Reclaim Space") engine, imported from Featherweight.
+        .package(path: "../../featherweight"),
+    ],
     targets: [
         .target(name: "ZapKit"),
-        .executableTarget(name: "Zap", dependencies: ["ZapKit"]),
+        .executableTarget(name: "Zap", dependencies: [
+            "ZapKit",
+            .product(name: "FeatherweightCore", package: "featherweight"),
+            .product(name: "FeatherweightClean", package: "featherweight"),
+        ]),
         .executableTarget(name: "zapkit-check", dependencies: ["ZapKit"], path: "Sources/ZapKitCheck"),
     ]
 )

@@ -2,7 +2,7 @@ import Foundation
 
 /// Appends a human-readable record of every clean to
 /// ~/Library/Logs/Featherweight/clean.log so users can audit what was removed.
-enum CleanLogger {
+public enum CleanLogger {
     struct Entry {
         let category: String
         let freedBytes: UInt64
@@ -10,12 +10,12 @@ enum CleanLogger {
         let skippedPaths: [String]
     }
 
-    static var logFileURL: URL {
+    public static var logFileURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/Featherweight/clean.log")
     }
 
-    static func ensureLogExists() {
+    public static func ensureLogExists() {
         let fm = FileManager.default
         try? fm.createDirectory(at: logFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !fm.fileExists(atPath: logFileURL.path) {

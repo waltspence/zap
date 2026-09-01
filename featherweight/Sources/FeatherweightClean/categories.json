@@ -389,8 +389,8 @@
       "icon": "app.badge.checkmark",
       "risk": "danger",
       "group": "Deep Clean",
-      "description": "Folders in ~/Library/Application Support whose app no longer appears to be installed — data orphaned by uninstalled apps. Detection uses Spotlight and can misfire for command-line tools, plugins, or apps installed outside /Applications, so Featherweight shows this for reference only and never cleans it automatically. Review each folder in Finder before deleting anything by hand.",
-      "scanCommand": "bash \"{RESOURCES}/app-leftovers.sh\""
+      "description": "Files orphaned by uninstalled apps. When the zap engine is installed its orphan detection is used (bundle-id attribution, allow-listed roots); otherwise a rougher name-matching heuristic runs. Shown for reference only and never cleaned automatically — use zap (or Finder) to remove leftovers deliberately.",
+      "scanCommand": "if [ -n \"{ZAP}\" ] && [ -x \"{ZAP}\" ]; then \"{ZAP}\" orphans --du 2>/dev/null; else bash \"{RESOURCES}/app-leftovers.sh\"; fi"
     },
     {
       "id": "imessage",

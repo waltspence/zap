@@ -148,6 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("orphans", help="find leftover files with no installed owner")
     sp.add_argument("-o", "--output", help="write the plan JSON to this file")
+    sp.add_argument("--du", action="store_true",
+                    help="print plain 'KB<TAB>path' lines (du -sk style) instead of the JSON/human plan; "
+                         "root-only and shared artifacts are omitted")
 
     sub.add_parser("history", help="list past uninstall operations")
 
@@ -203,6 +206,16 @@ def cmd_scan(ctx: Context, args) -> int:
 def cmd_orphans(ctx: Context, args) -> int:
     plan = ctx.engine.orphans()
     _maybe_write_plan(args, plan)
+    if getattr(args, "du", False):
+        # du -sk-compatible output for tooling (e.g. the Reclaim Space scanner):
+        # one "KB<TAB>path" line per orphan, largest first. Root-only and shared
+        # artifacts are omitted — a du consumer may feed these paths to a
+        # trasher, and those tiers are never safe to remove unattended.
+        for a in sorted(plan.artifacts, key=lambda a: a.size_bytes, reverse=True):
+            if a.requires_root or a.shared:
+                continue
+            sys.stdout.write(f"{max(1, (a.size_bytes + 1023) // 1024)}\t{a.path}\n")
+        return EXIT_OK
     return ctx.ok("orphans", ctx.plan_dict(plan), warnings=plan.warnings, human=ctx.renderer.plan(plan, title="Orphans"))
 
 

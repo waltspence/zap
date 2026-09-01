@@ -6,10 +6,19 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(m.visibleApps, selection: Binding(get: { m.selectedApp }, set: { m.select($0) })) { app in
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(app.title)
-                    Text(app.bundleId ?? app.identifier).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            List(selection: Binding(get: { m.sidebarSelection }, set: { m.select($0) })) {
+                Section("Tools") {
+                    Label("Reclaim Space", systemImage: "internaldrive")
+                        .tag(SidebarItem.reclaim)
+                }
+                Section("Apps") {
+                    ForEach(m.visibleApps) { app in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(app.title)
+                            Text(app.bundleId ?? app.identifier).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .tag(SidebarItem.app(app.id))
+                    }
                 }
             }
             .searchable(text: $m.filter, placement: .sidebar, prompt: "Filter apps")
@@ -25,7 +34,7 @@ struct ContentView: View {
                 Button { m.refresh() } label: { Label("Refresh", systemImage: "arrow.clockwise") }.disabled(m.busy)
             }
         }
-        .safeAreaInset(edge: .bottom) { footer }
+        .safeAreaInset(edge: .bottom) { if m.sidebarSelection != .reclaim { footer } }
         .sheet(isPresented: Binding(get: { m.operations != nil }, set: { if !$0 { m.operations = nil } })) { UndoSheet() }
         .sheet(isPresented: $m.fdaMissing) { AccessGate().interactiveDismissDisabled() }
         .alert("Move to Trash?", isPresented: $m.confirmTrash) {
@@ -59,7 +68,9 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var detail: some View {
-        if let plan = m.plan {
+        if m.sidebarSelection == .reclaim {
+            ReclaimView(scanner: m.reclaim)
+        } else if let plan = m.plan {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(plan.app.title).font(.title2.bold())
