@@ -27,8 +27,8 @@ dependencies = []
 dev = ["pytest>=7", "ruff>=0.4", "mypy>=1.8"]
 
 [project.urls]
-Homepage = "https://github.com/waltspence/stripapp"
-Repository = "https://github.com/waltspence/stripapp"
+Homepage = "https://github.com/waltspence/frank_zappa"
+Repository = "https://github.com/waltspence/frank_zappa"
 
 [project.scripts]
 zap = "zap.cli:main"
