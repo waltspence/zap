@@ -1,11 +1,18 @@
+import FeatherweightClean
 import Foundation
 import ZapKit
+
+/// What the sidebar can select: the Reclaim Space tool, or an installed app.
+enum SidebarItem: Hashable {
+    case reclaim
+    case app(InstalledApp.ID)
+}
 
 @MainActor
 final class Model: ObservableObject {
     @Published var apps: [InstalledApp] = []
     @Published var filter = ""
-    @Published var selectedApp: InstalledApp.ID?
+    @Published var sidebarSelection: SidebarItem?
     @Published var plan: Plan?
     @Published var checked: Set<String> = []
     @Published var aggressive = false { didSet { if oldValue != aggressive { rescan() } } }
@@ -21,13 +28,24 @@ final class Model: ObservableObject {
     @Published var blockers: [Blocker] = []
 
     let client: ZapClient
+    let reclaim: ReclaimScanner
+    private var reclaimScanKicked = false
 
     init(client: ZapClient? = nil) {
+        let bin = ZapClient.locateBinary()
         if let client { self.client = client }
-        else if let bin = ZapClient.locateBinary() { self.client = .live(binary: bin) }
+        else if let bin { self.client = .live(binary: bin) }
         else { self.client = ZapClient { _ in throw ZapFailure(code: "not_installed", message: "zap not found; pip install -e . first") } }
+        // The Reclaim scanner shells out to zap for orphan detection when
+        // available; the GUI decides when the first scan runs.
+        reclaim = ReclaimScanner(zapBinary: bin ?? "", autoScanOnFirstLaunch: false)
         fdaMissing = FullDiskAccess.granted() == false
         refresh()
+    }
+
+    var selectedApp: InstalledApp.ID? {
+        if case .app(let id) = sidebarSelection { return id }
+        return nil
     }
 
     var visibleApps: [InstalledApp] {
@@ -48,10 +66,21 @@ final class Model: ObservableObject {
         }
     }
 
-    func select(_ id: InstalledApp.ID?) {
-        selectedApp = id
+    func select(_ item: SidebarItem?) {
+        sidebarSelection = item
         plan = nil; checked = []
-        rescan()
+        switch item {
+        case .app:
+            rescan()
+        case .reclaim:
+            // First visit kicks off a scan; after that the user drives it.
+            if !reclaimScanKicked {
+                reclaimScanKicked = true
+                reclaim.scan()
+            }
+        case nil:
+            break
+        }
     }
 
     func rescan() {
@@ -77,7 +106,7 @@ final class Model: ObservableObject {
             self.attention = report.needsAttention
             self.status = "\(report.removed) removed · \(humanBytes(report.bytesReclaimed)) reclaimed"
                 + (self.attention.isEmpty ? "" : " · \(self.attention.count) need attention")
-            self.plan = nil; self.checked = []; self.selectedApp = nil
+            self.plan = nil; self.checked = []; self.sidebarSelection = nil
             self.refresh()
         }
     }

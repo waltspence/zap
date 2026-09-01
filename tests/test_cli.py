@@ -142,6 +142,30 @@ class CliContractTests(unittest.TestCase):
             # none are auto-selected
             self.assertFalse(any(a["auto_selected"] for a in payload["data"]["artifacts"]))
 
+    def test_orphans_du(self):
+        with TempTree() as root:
+            build_widget_tree(root)
+            env = darwin_env(root)
+            code, out, _ = run(["orphans", "--du"], env)
+            self.assertEqual(code, 0)
+            lines = [ln for ln in out.splitlines() if ln]
+            self.assertTrue(any("com.other.Thing" in ln for ln in lines))
+            for ln in lines:
+                kb, _sep, path = ln.partition("\t")
+                self.assertTrue(kb.isdigit() and int(kb) >= 1, ln)
+                self.assertTrue(path.startswith("/"), ln)
+
+    def test_orphans_du_rejects_json(self):
+        # --du deliberately emits plain lines; with --json it must fail with a
+        # structured usage error, never non-JSON output under the JSON flag.
+        with TempTree() as root:
+            build_widget_tree(root)
+            env = darwin_env(root)
+            code, out, _ = run(["--json", "orphans", "--du"], env)
+            self.assertNotEqual(code, 0)
+            payload = json.loads(out)
+            self.assertEqual(payload["error"]["code"], "usage_error")
+
 
 if __name__ == "__main__":
     unittest.main()

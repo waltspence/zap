@@ -1,0 +1,7 @@
+.build/
+Featherweight.app
+Featherweight.dmg
+Featherweight.iconset
+.DS_Store
+*.swp
+*.dmg
