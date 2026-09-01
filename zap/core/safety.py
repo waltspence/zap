@@ -10,6 +10,9 @@ both at scan time and again at execute time. The guard's contract:
   symlinked *ancestor* that escapes the root is rejected.
 * The path must be strictly deeper than the root — a root itself, ``$HOME``,
   ``/`` or any top-level directory can never be a target.
+* Anything lexically under ``$HOME`` must also *resolve* under the real
+  ``$HOME``, so a catalog root that is itself a symlink out of the home
+  directory cannot be used to reach elsewhere.
 
 The allow-listed roots are derived from the very same catalog used for
 discovery, so the guard and the discovery layer cannot drift apart.
@@ -22,6 +25,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from ..environment import Environment
+from .identifiers import normalize_casefold
 
 
 class SafetyGuard:
@@ -31,6 +35,9 @@ class SafetyGuard:
         # De-duplicate and resolve roots up front. A root that does not exist
         # is still a valid boundary (we compare lexically against it), but we
         # also keep a realpath'd copy for symlink-escape checks.
+        self._home = Path(os.path.normpath(os.path.abspath(str(env.home))))
+        self._state_home = Path(os.path.normpath(os.path.abspath(str(env.state_home))))
+        self._real_home = Path(os.path.realpath(str(self._home)))
         self._roots: List[Path] = []
         seen = set()
         for r in allowed_roots:
@@ -65,6 +72,10 @@ class SafetyGuard:
         if len(parts) <= 2:
             return False, "path is too shallow to be an app artifact"
 
+        # zap's own history and lock live under a catalog root; never target them.
+        if self._within(candidate, self._state_home) or self._within(self._state_home, candidate):
+            return False, "path is zap's own state directory"
+
         # Find the allow-listed root this candidate claims to live under,
         # comparing lexically first (fast, and independent of what exists).
         root = self._lexical_root_for(candidate)
@@ -88,6 +99,12 @@ class SafetyGuard:
             real_parent, root
         ):
             return False, "resolved parent escapes the allow-listed root (symlink?)"
+
+        # The root itself may be a symlink (~/Library/Logs -> /Volumes/X). Then
+        # the check above is vacuous, so additionally require anything under
+        # the home directory to *resolve* under the real home directory.
+        if self._within(candidate, self._home) and not self._within(real_parent, self._real_home):
+            return False, "resolved parent leaves the home directory (symlinked ancestor)"
 
         return True, None
 
@@ -116,7 +133,7 @@ class SafetyGuard:
     # -- helpers -----------------------------------------------------------
 
     def _casekey(self, s: str) -> str:
-        return s.casefold() if self._case_insensitive else s
+        return normalize_casefold(s) if self._case_insensitive else s
 
     def _lexical_root_for(self, candidate: Path) -> Optional[Path]:
         best: Optional[Path] = None

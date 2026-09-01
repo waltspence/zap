@@ -158,6 +158,19 @@ class SafetyGuardTests(unittest.TestCase):
                 )
             )
 
+    def test_symlinked_root_out_of_home_is_rejected(self):
+        with TempTree() as root:
+            env = make_env(root)
+            (root / "elsewhere").mkdir()
+            logs = env.home / "Library" / "Logs"
+            logs.parent.mkdir(parents=True, exist_ok=True)
+            logs.symlink_to(root / "elsewhere")
+            (root / "elsewhere" / "com.acme.Widget").mkdir()
+            guard = SafetyGuard(env, build_allowed_roots(env, ROOT_TEMPLATES + [(HOME, "Library/Logs")]))
+            ok, reason = guard.check(logs / "com.acme.Widget")
+            self.assertFalse(ok, reason)
+            self.assertIn("home directory", reason or "")
+
     def test_case_insensitive_containment_on_darwin(self):
         with TempTree() as root:
             guard = self._guard(root, system="darwin")

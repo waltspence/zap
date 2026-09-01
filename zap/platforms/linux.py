@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 from ..core import catalog as C
 from ..core import identifiers as I
 from ..core.models import App
-from ..environment import Environment
 from .base import Backend
 
 
@@ -28,12 +27,12 @@ class LinuxBackend(Backend):
             for entry in sorted(directory.glob("*.desktop")):
                 app = self._read_desktop(entry, managed)
                 if app is not None:
-                    apps.setdefault(app.identifier.lower(), app)
+                    apps.setdefault(_key(app), app)
 
         for app in self._flatpak_apps():
-            apps.setdefault(app.identifier.lower(), app)
+            apps.setdefault(_key(app), app)
         for app in self._snap_apps():
-            apps.setdefault(app.identifier.lower(), app)
+            apps.setdefault(_key(app), app)
 
         return sorted(apps.values(), key=lambda a: a.name.lower())
 
@@ -125,6 +124,11 @@ class LinuxBackend(Backend):
                 )
             )
         return out
+
+
+def _key(app: App) -> str:
+    # Case-sensitive filesystems: org.acme.App and org.acme.app are two apps.
+    return I.normalize_nfc(app.identifier)
 
 
 def _listdir(p: Path) -> List[str]:

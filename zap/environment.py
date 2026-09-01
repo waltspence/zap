@@ -30,7 +30,8 @@ class Environment:
     home: Path  # the *invoking* user's home (SUDO_USER-aware)
     sysroot: Path  # absolute system paths are resolved under here
     state_home: Path  # where zap stores history/manifests/locks
-    uid: int = 0
+    uid: int = 0  # the *invoking* user's uid (SUDO_UID-aware); drives trash dirs
+    gid: Optional[int] = None
     is_root: bool = False
     is_tty: bool = False
     data_home: Optional[Path] = None  # XDG_DATA_HOME; None -> ~/.local/share
@@ -74,7 +75,8 @@ def _safe_device(path: Path) -> int:
     p = Path(path)
     for candidate in (p, *p.parents):
         try:
-            return os.stat(candidate).st_dev
+            # lstat: a leaf symlink lives on *its own* volume, not its target's.
+            return os.lstat(candidate).st_dev
         except OSError:
             continue
     return -1
@@ -88,7 +90,7 @@ def mount_point_of(env: Environment, path: Path) -> Path:
     """
     p = Path(path)
     # Anchor to the nearest existing ancestor so a not-yet-created leaf works.
-    while not p.exists() and p != p.parent:
+    while not os.path.lexists(p) and p != p.parent:
         p = p.parent
     dev = env.device_of(p)
     top = p
@@ -121,6 +123,21 @@ def _invoking_user_home(system: str) -> Path:
     return Path(os.path.expanduser("~"))
 
 
+def _invoking_ids(euid: int) -> "tuple[int, Optional[int]]":
+    """(uid, gid) of the human who ran zap, even under sudo.
+
+    Per-volume trash directories are keyed by uid (``.Trashes/<uid>``,
+    ``.Trash-<uid>``); using root's would hide the items from the user's own
+    Trash and make ``undo`` need root again.
+    """
+    if euid == 0:
+        sudo_uid = os.environ.get("SUDO_UID")
+        if sudo_uid and sudo_uid.isdigit():
+            sudo_gid = os.environ.get("SUDO_GID")
+            return int(sudo_uid), (int(sudo_gid) if sudo_gid and sudo_gid.isdigit() else None)
+    return euid, None
+
+
 def _default_state_home(system: str, home: Path) -> Path:
     if system == "darwin":
         return home / "Library" / "Application Support" / "zap"
@@ -138,8 +155,9 @@ def current_environment(
     """Build an :class:`Environment` from the real running process."""
     sysname = system or ("darwin" if sys.platform == "darwin" else "linux")
     home = _invoking_user_home(sysname)
-    uid = os.getuid() if hasattr(os, "getuid") else 0
-    is_root = uid == 0
+    euid = os.geteuid() if hasattr(os, "geteuid") else 0
+    is_root = euid == 0
+    uid, gid = _invoking_ids(euid)
     if stdout_isatty is None:
         try:
             stdout_isatty = sys.stdout.isatty()
@@ -152,6 +170,7 @@ def current_environment(
         sysroot=Path("/"),
         state_home=_default_state_home(sysname, home),
         uid=uid,
+        gid=gid,
         is_root=is_root,
         is_tty=bool(stdout_isatty),
         data_home=Path(xdg_data) if xdg_data else None,

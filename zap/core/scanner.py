@@ -3,7 +3,7 @@
 The scanner is the bridge between the declarative :mod:`catalog` and the live
 filesystem. For each location it runs the location's strategy, classifies every
 candidate through :mod:`matching`, then annotates the survivor with size,
-fingerprint, risk, and auto-selection. Every candidate is passed through the
+fingerprint and risk (auto-selection is the engine's decision). Every candidate is passed through the
 :class:`~zap.core.safety.SafetyGuard`; rejects are not silently dropped but
 recorded on a ``dropped`` channel so an agent can see near-misses.
 """
@@ -75,6 +75,7 @@ class Scanner:
         found: Dict[str, Tuple[Artifact, str]] = {}  # id -> (artifact, confidence)
         dropped: List[dict] = []
         warnings: List[dict] = []
+        self._seen_inodes: Dict[Tuple[int, int], str] = {}  # (dev, ino) -> artifact id
 
         for loc in locations:
             container = self.env.resolve(loc.base, *[s for s in loc.container.split("/") if s])
@@ -134,13 +135,20 @@ class Scanner:
                     yield cand, Match(key, bid, conf), shared
 
     def _id_scan(self, loc, container, inp):
+        suffixes = tuple(s for s in (loc.suffixes or ()) if s)
         for child in _iter_children(container):
-            m = matching.match_bundle_child(child, inp.keys)
+            stem = child
+            if suffixes:
+                matched = next((s for s in suffixes if child.endswith(s)), None)
+                if matched is None:
+                    continue
+                stem = child[: -len(matched)]
+            m = matching.match_bundle_child(stem, inp.keys)
             shared = False
             if m is None:
                 # try embedded ids
                 for emb in inp.embedded:
-                    em = self._embedded_bundle_match(child, emb, inp.keys)
+                    em = self._embedded_bundle_match(stem, emb, inp.keys)
                     if em is not None:
                         m, shared = em, emb.shared
                         break
@@ -180,10 +188,15 @@ class Scanner:
         if vp is None:
             return
         vendor, product = vp
+        # com.acme.Widget and net.acme.Widget both decompose to Acme/Widget:
+        # if another installed app owns the same folder it is shared, never
+        # attributed to us alone.
+        key = (I.normalize_casefold(vendor), I.normalize_casefold(product))
+        shared = key in inp.keys.other_vendor_dirs
         for v in {vendor, vendor.lower(), vendor.capitalize()}:
             cand = container / v / product
             if cand.is_dir():
-                yield cand, Match("vendor_folder", f"{v}/{product}", CONFIDENCE_DERIVED), False
+                yield cand, Match("vendor_folder", f"{v}/{product}", CONFIDENCE_DERIVED), shared
 
     def _byhost(self, loc, container, inp):
         bid = inp.keys.bundle_id
@@ -191,8 +204,14 @@ class Scanner:
             return
         prefix = bid + "."
         for child in _iter_children(container):
-            if child.startswith(prefix) and child.endswith(".plist"):
-                yield container / child, Match("byhost", bid, CONFIDENCE_EXACT), False
+            if not (child.startswith(prefix) and child.endswith(".plist")):
+                continue
+            # ByHost files are <bundle-id>.<hardware-uuid>.plist: exactly one
+            # extra label. Anything with more dots is a dot-child sibling app.
+            rest = child[len(prefix) : -len(".plist")]
+            if not rest or "." in rest:
+                continue
+            yield container / child, Match("byhost", bid, CONFIDENCE_EXACT), False
 
     def _group_container(self, loc, container, inp):
         bid = inp.keys.bundle_id
@@ -222,12 +241,16 @@ class Scanner:
         if not procnames:
             return
         for child in _iter_children(container):
-            base = child
-            for sep in ("_", "-"):
-                if sep in base:
-                    base = base.split(sep)[0]
-                    break
-            if I.normalize_casefold(base) in procnames:
+            folded = I.normalize_casefold(child)
+            # Crash reports are "<Process>_<date>.crash" or "<Process>-<date>.ips".
+            # Match the longest known process name that is followed by a
+            # separator, so hyphenated names are not split at their own hyphen.
+            hit = any(
+                folded.startswith(name) and len(folded) > len(name) and folded[len(name)] in "_-"
+                for name in procnames
+                if name
+            )
+            if hit:
                 yield container / child, Match("process_name", child, CONFIDENCE_HEURISTIC), False
 
     def _bundle_scan(self, loc, container, inp):
@@ -283,6 +306,17 @@ class Scanner:
             return
 
         art_id = artifact_id_for(path)
+        # The same object can be reached by differently-cased paths on a
+        # case-insensitive filesystem; collapse those onto the first id seen.
+        fp = Fingerprint.of(path)
+        if fp.exists and fp.ino != 0:  # some FUSE/network mounts report 0 for everything
+            inode = (fp.dev, fp.ino)
+            prior = self._seen_inodes.get(inode)
+            if prior is not None and prior != art_id:
+                art_id = prior
+                path = found[prior][0].path
+            else:
+                self._seen_inodes[inode] = art_id
         existing = found.get(art_id)
         if existing is not None:
             _, prev_conf = existing
@@ -294,9 +328,6 @@ class Scanner:
         shared_id = I.is_valid_bundle_id(match.value) and I.is_shared_component_id(match.value)
         is_shared = bool(shared or loc.shared or shared_id)
         never_remove = loc.category == CAT_SYSTEM_EXTENSION
-        auto = matching.is_auto_selectable(match, shared=is_shared, requires_root=requires_root)
-        if never_remove:
-            auto = False
 
         notes = []
         if loc.note:
@@ -316,8 +347,8 @@ class Scanner:
             shared=is_shared,
             reversible=not never_remove,
             requires_root=requires_root,
-            auto_selected=auto,
-            fingerprint=Fingerprint.of(path),
+            auto_selected=False,  # decided later by Engine._apply_selection_tiers
+            fingerprint=fp,
             notes=notes,
         )
         found[art_id] = (art, match.confidence)
