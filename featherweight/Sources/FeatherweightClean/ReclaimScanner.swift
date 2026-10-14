@@ -1,27 +1,34 @@
+import Combine
 import FeatherweightCore
 import Foundation
-import SwiftUI
 
+/// Observable scan/clean orchestrator behind the Reclaim Space UI.
+/// (Named to avoid colliding with Foundation.Scanner in consuming modules.)
 @MainActor
-final class Scanner: ObservableObject {
-    @Published var results: [ScanResult] = []
-    @Published var isScanning = false
-    @Published var isCleaning = false
-    @Published var totalReclaimable: UInt64 = 0
-    @Published var totalSelected: UInt64 = 0
-    @Published var lastCleanedBytes: UInt64 = 0
-    @Published var lastCleanedDate: Date?
-    @Published var scanProgress: Double = 0
-    @Published var searchText = ""
-    @Published var showAll = false
-    @Published var isFirstLaunch = false
-    @Published var loadError: String?
-    @Published var projectRoots: [String] {
+public final class ReclaimScanner: ObservableObject {
+    @Published public var results: [ScanResult] = []
+    @Published public var isScanning = false
+    @Published public var isCleaning = false
+    @Published public var totalReclaimable: UInt64 = 0
+    @Published public var totalSelected: UInt64 = 0
+    @Published public var lastCleanedBytes: UInt64 = 0
+    @Published public var lastTrashedBytes: UInt64 = 0
+    @Published public var lastCleanedDate: Date?
+    @Published public var scanProgress: Double = 0
+    @Published public var searchText = ""
+    @Published public var showAll = false
+    @Published public var isFirstLaunch = false
+    @Published public var loadError: String?
+    @Published public var projectRoots: [String] {
         didSet { UserDefaults.standard.set(projectRoots, forKey: Self.rootsKey) }
     }
 
-    static let rootsKey = "featherweight.projectRoots"
-    static let defaultRoots = ["~/dev", "~/lab", "~/wrkflw", "~/Projects", "~/Desktop"]
+    /// Absolute path to the `zap` binary, substituted for {ZAP} in scan
+    /// commands; empty when zap isn't installed (commands fall back).
+    public var zapBinary: String
+
+    public static let rootsKey = "featherweight.projectRoots"
+    public static let defaultRoots = ["~/dev", "~/lab", "~/wrkflw", "~/Projects", "~/Desktop"]
     private let defaultsKey = "featherweight.lastCleaned"
 
     private let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
@@ -31,29 +38,30 @@ final class Scanner: ObservableObject {
 
     // MARK: - Derived state
 
-    var filteredResults: [ScanResult] {
+    public var filteredResults: [ScanResult] {
         let base = searchText.isEmpty ? results : results.filter { $0.category.name.localizedCaseInsensitiveContains(searchText) }
         if showAll { return base }
         // Only show categories that have content or are still scanning/pending
         return base.filter { $0.sizeBytes > 0 || $0.status != .done || !hasScanned }
     }
 
-    var hiddenCount: Int {
+    public var hiddenCount: Int {
         guard hasScanned else { return 0 }
         return results.filter { $0.sizeBytes == 0 && $0.status == .done }.count
     }
 
-    var selectedNames: [String] {
+    public var selectedNames: [String] {
         results.filter(\.selected).map { $0.category.name }
     }
 
     // MARK: - Lifecycle
 
-    init() {
+    public init(zapBinary: String = "", autoScanOnFirstLaunch: Bool = true) {
+        self.zapBinary = zapBinary
         projectRoots = UserDefaults.standard.stringArray(forKey: Self.rootsKey) ?? Self.defaultRoots
         loadCategories()
         loadHistory()
-        if lastCleanedDate == nil {
+        if lastCleanedDate == nil && autoScanOnFirstLaunch {
             isFirstLaunch = true
             // Auto-detect on first launch
             Task { @MainActor in
@@ -64,7 +72,7 @@ final class Scanner: ObservableObject {
     }
 
     private func loadCategories() {
-        guard let url = Bundle.module.url(forResource: "categories", withExtension: "json") else {
+        guard let url = ResourceBundle.bundle.url(forResource: "categories", withExtension: "json") else {
             loadError = "categories.json is missing from the app's resources."
             return
         }
@@ -82,11 +90,12 @@ final class Scanner: ObservableObject {
               let history = try? JSONDecoder().decode(CleanHistory.self, from: data)
         else { return }
         lastCleanedBytes = history.bytes
+        lastTrashedBytes = history.trashedBytes
         lastCleanedDate = history.date
     }
 
     private func saveHistory() {
-        let history = CleanHistory(bytes: lastCleanedBytes, date: Date())
+        let history = CleanHistory(bytes: lastCleanedBytes, trashedBytes: lastTrashedBytes, date: Date())
         if let data = try? JSONEncoder().encode(history) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
@@ -95,12 +104,12 @@ final class Scanner: ObservableObject {
 
     // MARK: - Scanning
 
-    func scan() {
+    public func scan() {
         scanTask?.cancel()
         scanTask = Task { await performScan() }
     }
 
-    func cancelScan() {
+    public func cancelScan() {
         scanTask?.cancel()
         isScanning = false
         for i in results.indices where results[i].status == .scanning {
@@ -153,8 +162,15 @@ final class Scanner: ObservableObject {
                     }
                 }
                 for await (i, size, denied) in group {
+                    // A cancelled scan must not overwrite the idle states
+                    // cancelScan() installed (or a newer scan's results) with
+                    // late-arriving sizes from still-draining child tasks.
+                    if Task.isCancelled { continue }
                     results[i].sizeBytes = size
-                    results[i].status = (denied && size == 0) ? .error("Needs Full Disk Access") : .done
+                    // denied with a nonzero size means a partial count: some
+                    // descendants were unreadable, so still surface the FDA
+                    // state rather than presenting the scan as complete.
+                    results[i].status = denied ? .error("Needs Full Disk Access") : .done
                 }
             }
 
@@ -170,19 +186,19 @@ final class Scanner: ObservableObject {
 
     // MARK: - Selection
 
-    func toggle(_ id: UUID) {
+    public func toggle(_ id: UUID) {
         guard let i = results.firstIndex(where: { $0.id == id }) else { return }
         if results[i].category.risk == .danger && !results[i].selected { return } // can't select danger
         results[i].selected.toggle()
         updateTotals()
     }
 
-    func selectAllSafe() {
+    public func selectAllSafe() {
         for i in results.indices where results[i].category.risk == .safe { results[i].selected = true }
         updateTotals()
     }
 
-    func deselectAll() {
+    public func deselectAll() {
         for i in results.indices { results[i].selected = false }
         updateTotals()
     }
@@ -196,10 +212,17 @@ final class Scanner: ObservableObject {
 
     // MARK: - Cleaning
 
-    func clean() async {
+    public func clean() async {
         isCleaning = true
         var totalFreed: UInt64 = 0
+        var totalTrashed: UInt64 = 0
         var logEntries: [CleanLogger.Entry] = []
+
+        // Same overlap set the scan subtracts, so cleaning a parent category
+        // (System Caches) never removes a nested category the user deselected.
+        let allPlainPaths = results.flatMap { r in
+            r.category.paths.map { (id: r.category.id, path: expand($0)) }
+        }
 
         for result in results where result.selected {
             let category = result.category
@@ -221,8 +244,11 @@ final class Scanner: ObservableObject {
                     allowHardDelete: allowHardDelete
                 )
             case .trashContents:
+                let paths = category.paths.map { expand($0) }
                 report = await CleanEngine.trashContents(
-                    of: category.paths.map { expand($0) }, allowHardDelete: allowHardDelete
+                    of: paths,
+                    excluding: PathUtils.exclusions(ownId: category.id, ownPaths: paths, all: allPlainPaths),
+                    allowHardDelete: allowHardDelete
                 )
             case .trashPaths:
                 report = await CleanEngine.trashPaths(
@@ -231,17 +257,21 @@ final class Scanner: ObservableObject {
             }
 
             totalFreed += report.freedBytes
+            totalTrashed += report.trashedBytes
             logEntries.append(CleanLogger.Entry(
                 category: category.name, freedBytes: report.freedBytes,
+                trashedBytes: report.trashedBytes,
                 removals: report.removals, skippedPaths: report.skippedPaths
             ))
         }
 
         CleanLogger.append(entries: logEntries)
         lastCleanedBytes = totalFreed
+        lastTrashedBytes = totalTrashed
         saveHistory()
         isCleaning = false
-        await performScan()
+        // Rescan through the normal scan lifecycle so Stop can cancel it.
+        scan()
     }
 
     // MARK: - Path & token resolution
@@ -250,17 +280,19 @@ final class Scanner: ObservableObject {
         PathUtils.expandTilde(path, home: homeDir)
     }
 
-    /// Substitutes {RESOURCES} (bundled helper scripts) and {PROJECT_ROOTS}
-    /// (user-configured project folders, expanded and shell-quoted).
+    /// Substitutes {RESOURCES} (bundled helper scripts), {PROJECT_ROOTS}
+    /// (user-configured project folders, expanded and shell-quoted) and {ZAP}
+    /// (the zap binary path, shell-quoted; empty when zap isn't installed).
     private func resolveTokens(_ command: String) -> String {
         var resolved = command.replacingOccurrences(
-            of: "{RESOURCES}", with: Bundle.module.resourcePath ?? ""
+            of: "{RESOURCES}", with: ResourceBundle.bundle.resourcePath ?? ""
         )
         let roots = projectRoots
             .map { expand($0) }
             .map { Self.shellQuote($0) }
             .joined(separator: " ")
         resolved = resolved.replacingOccurrences(of: "{PROJECT_ROOTS}", with: roots)
+        resolved = resolved.replacingOccurrences(of: "{ZAP}", with: zapBinary)
         return resolved
     }
 

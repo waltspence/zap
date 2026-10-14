@@ -233,3 +233,32 @@ throwaway directory trees.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## GUI (optional)
+
+**macOS — native.** `macos/Zap` builds **Frankly Zapped.app**, a small SwiftUI app (no Xcode needed, just
+the Command Line Tools). It shells out to `zap --json`, so the CLI's safety
+rules, tiers, Trash and undo log stay in charge. Sidebar of apps with a
+filter; the scan as a table with checkboxes (exact matches pre-ticked,
+name-only/derived greyed until you tick them or flip **Aggressive** /
+**Name-only** in the toolbar); **Move to Trash** (⌘⌫) confirms first;
+**Undo…** lists past operations to restore.
+
+```sh
+make app                                 # → ~/Applications/Frankly Zapped.app
+python scripts/make_macos_app.py --icon my-icon.png   # custom icon
+make gui-check                           # build + run ZapKit checks
+```
+
+The app finds `zap` via `$ZAP_BIN`, `~/.local/bin/zap`, Homebrew paths, or
+`$PATH`.
+
+**Updating.** The menu's *Check for Updates…* compares the app's build commit
+with your checkout and origin; *Update Now* runs `scripts/update_app.sh`
+(git pull --ff-only, rebuild, relaunch — log in
+`~/Library/Logs/frankly-zapped-update.log`). Requires the checkout the app
+was built from to still exist.
+
+**Anywhere — Tkinter fallback.** `zap-gui` is a stdlib-only Tkinter version of
+the same thing (`zap/gui.py`, one file, zero deps, plain-looking).
+`python scripts/make_macos_app.py --tk` wraps it as an app bundle instead.

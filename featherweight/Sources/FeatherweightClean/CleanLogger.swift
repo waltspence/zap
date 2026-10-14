@@ -2,20 +2,21 @@ import Foundation
 
 /// Appends a human-readable record of every clean to
 /// ~/Library/Logs/Featherweight/clean.log so users can audit what was removed.
-enum CleanLogger {
+public enum CleanLogger {
     struct Entry {
         let category: String
         let freedBytes: UInt64
+        let trashedBytes: UInt64
         let removals: [CleanEngine.Removal]
         let skippedPaths: [String]
     }
 
-    static var logFileURL: URL {
+    public static var logFileURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/Featherweight/clean.log")
     }
 
-    static func ensureLogExists() {
+    public static func ensureLogExists() {
         let fm = FileManager.default
         try? fm.createDirectory(at: logFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !fm.fileExists(atPath: logFileURL.path) {
@@ -31,9 +32,14 @@ enum CleanLogger {
         let formatter = ByteCountFormatter()
         var lines: [String] = []
         for entry in entries {
-            lines.append("[\(stamp)] \(entry.category): freed \(formatter.string(fromByteCount: Int64(entry.freedBytes)))")
+            var parts: [String] = []
+            if entry.freedBytes > 0 { parts.append("freed \(formatter.string(fromByteCount: Int64(entry.freedBytes)))") }
+            if entry.trashedBytes > 0 { parts.append("moved \(formatter.string(fromByteCount: Int64(entry.trashedBytes))) to Trash") }
+            if parts.isEmpty { parts.append("freed Zero KB") }
+            lines.append("[\(stamp)] \(entry.category): \(parts.joined(separator: ", "))")
             for removal in entry.removals {
-                lines.append("[\(stamp)]   removed \(removal.path) (\(formatter.string(fromByteCount: Int64(removal.bytes))))")
+                let verb = removal.trashed ? "trashed" : "deleted"
+                lines.append("[\(stamp)]   \(verb) \(removal.path) (\(formatter.string(fromByteCount: Int64(removal.bytes))))")
             }
             for path in entry.skippedPaths {
                 lines.append("[\(stamp)]   skipped \(path) (could not move to Trash)")

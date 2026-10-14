@@ -46,18 +46,28 @@ public enum DirectorySizer {
             return Outcome(bytes: 0, denied: denied)
         }
 
+        // A readable root can still contain TCC-protected descendants
+        // (e.g. under ~/Library/Caches); record those denials so a partial
+        // count is never presented as a complete one.
+        var deniedBelow = false
         guard let enumerator = fm.enumerator(
             at: url,
             includingPropertiesForKeys: Array(resourceKeys),
             options: [],
-            errorHandler: { _, _ in true }
+            errorHandler: { _, error in
+                let nsError = error as NSError
+                if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoPermissionError {
+                    deniedBelow = true
+                }
+                return true
+            }
         ) else { return Outcome(bytes: 0, denied: false) }
 
         var total: UInt64 = 0
         for case let fileURL as URL in enumerator {
             total += allocatedSize(of: fileURL)
         }
-        return Outcome(bytes: total, denied: false)
+        return Outcome(bytes: total, denied: deniedBelow)
     }
 
     private static let resourceKeys: Set<URLResourceKey> = [

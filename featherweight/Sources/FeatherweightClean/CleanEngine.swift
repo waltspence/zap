@@ -7,10 +7,18 @@ enum CleanEngine {
     struct Removal: Sendable {
         let path: String
         let bytes: UInt64
+        /// True when the item went to the Trash (recoverable, still on disk)
+        /// rather than being deleted outright.
+        let trashed: Bool
     }
 
     struct Report: Sendable {
+        /// Bytes actually released back to the filesystem (hard deletes,
+        /// command cleans measured before/after).
         var freedBytes: UInt64 = 0
+        /// Bytes moved to the Trash — recoverable, and not free until the
+        /// user empties it, so never conflated with freedBytes.
+        var trashedBytes: UInt64 = 0
         var removals: [Removal] = []
         var skippedPaths: [String] = []
     }
@@ -27,12 +35,16 @@ enum CleanEngine {
     }
 
     /// Trash the children of each directory, preserving the directory itself.
-    static func trashContents(of directories: [String], allowHardDelete: Bool) async -> Report {
+    /// `excluding` lists paths owned by other categories (the same set the
+    /// scan subtracts): a child is skipped when it is, or contains, an
+    /// excluded path, so deselecting a nested category really preserves it.
+    static func trashContents(of directories: [String], excluding: [String] = [], allowHardDelete: Bool) async -> Report {
         var report = Report()
         for directory in directories {
             guard let children = try? FileManager.default.contentsOfDirectory(atPath: directory) else { continue }
             for child in children {
                 let path = (directory as NSString).appendingPathComponent(child)
+                if excluding.contains(where: { $0 == path || $0.hasPrefix(path + "/") }) { continue }
                 await remove(path, allowHardDelete: allowHardDelete, into: &report)
             }
         }
@@ -68,21 +80,24 @@ enum CleanEngine {
     private static func remove(_ path: String, allowHardDelete: Bool, into report: inout Report) async {
         guard FileManager.default.fileExists(atPath: path) else { return }
         let size = await DirectorySizer.size(ofPath: path).bytes
-        var freed: UInt64 = 0
         do {
             try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
-            freed = size
+            report.trashedBytes += size
+            report.removals.append(Removal(path: path, bytes: size, trashed: true))
         } catch {
             guard allowHardDelete else {
                 report.skippedPaths.append(path)
                 return
             }
             _ = await ProcessRunner.run("/bin/rm", ["-rf", path])
-            freed = FileManager.default.fileExists(atPath: path) ? 0 : size
-        }
-        if freed > 0 {
-            report.freedBytes += freed
-            report.removals.append(Removal(path: path, bytes: freed))
+            guard !FileManager.default.fileExists(atPath: path) else {
+                // Both the trash move and the fallback left the item in
+                // place — record it so the clean log stays a complete audit.
+                report.skippedPaths.append(path)
+                return
+            }
+            report.freedBytes += size
+            report.removals.append(Removal(path: path, bytes: size, trashed: false))
         }
     }
 }
