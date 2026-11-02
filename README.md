@@ -51,9 +51,9 @@ is designed around three ideas:
 ## Install
 
 ```
-pipx install zap-uninstaller      # recommended
+pipx install git+https://github.com/waltspence/zap      # recommended
 # or
-pip install --user zap-uninstaller
+pip install --user git+https://github.com/waltspence/zap
 # or from a checkout
 pip install -e .
 ```
