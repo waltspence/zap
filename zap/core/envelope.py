@@ -34,6 +34,7 @@ ERROR_EXIT = {
     "blocked_by_safety": EXIT_BLOCKED,
     "plan_app_mismatch": EXIT_BLOCKED,
     "confirmation_required": EXIT_CONFIRMATION,
+    "permission_required": EXIT_BLOCKED,
     "locked": EXIT_LOCKED,
     "unknown_operation": EXIT_USAGE,
     "internal_error": EXIT_ERROR,

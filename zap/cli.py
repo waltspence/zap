@@ -21,6 +21,7 @@ from typing import List, Optional, Set, Tuple
 
 from . import SCHEMA_VERSION, __version__
 from .core import history as history_mod
+from .core import preflight
 from .core.engine import Engine
 from .core.envelope import (
     EXIT_BLOCKED,
@@ -141,6 +142,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--aggressive", action="store_true", help="also act on derived matches")
     sp.add_argument("--include-low", action="store_true", help="also act on name-only matches")
     sp.add_argument("--include-system", action="store_true", help="also act on system/root artifacts")
+    sp.add_argument("--skip-preflight", action="store_true",
+                    help="attempt removal even when the permission preflight predicts failures")
     sp.add_argument("--only", action="append", default=[], help="act only on these artifact ids (comma-separated)")
     sp.add_argument("--except", dest="except_", action="append", default=[], help="exclude these artifact ids")
     sp.add_argument("--summary", action="store_true",
@@ -411,6 +414,17 @@ def cmd_uninstall(ctx: Context, args) -> int:
         }
         human = ctx.renderer.plan(plan, title="Nothing selected to remove")
         return ctx.emit("uninstall", data, EXIT_NOTHING, warnings=plan.warnings, human=human)
+
+    if not dry_run and not args.skip_preflight:
+        blockers = preflight.check(ctx.env, selected)
+        if blockers:
+            raise ZapError(
+                "permission_required",
+                "insufficient permissions for the current selection; nothing was removed. "
+                "Fix the items below, deselect them with --except, or pass --skip-preflight "
+                "to attempt anyway.",
+                {"blockers": blockers},
+            )
 
     try:
         report = ctx.engine.execute(plan, selected, method=method, dry_run=dry_run)

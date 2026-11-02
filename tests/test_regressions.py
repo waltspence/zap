@@ -197,3 +197,72 @@ class CrashLogNameWithSpaces(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PermissionReasonTest(unittest.TestCase):
+    """EPERM failures must tell the user what to actually do."""
+
+    def _art(self, requires_root=False):
+        from zap.core.engine import _perm_reason
+        return _perm_reason
+
+    def _env(self, uid=501, home="/Users/u"):
+        class E:
+            pass
+        e = E()
+        e.uid = uid
+        e.home = home
+        return e
+
+    def _artifact(self, requires_root=False):
+        class A:
+            pass
+        a = A()
+        a.requires_root = requires_root
+        return a
+
+    def test_requires_root_says_sudo(self):
+        from pathlib import Path
+        from zap.core.engine import _perm_reason
+        r = _perm_reason(self._env(), self._artifact(requires_root=True), Path("/nonexistent"))
+        self.assertIn("sudo", r)
+
+    def test_root_owned_app_store_hint(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from zap.core.engine import _perm_reason
+        with tempfile.NamedTemporaryFile() as f:
+            st = os.lstat(f.name)
+            fake = os.stat_result((st.st_mode, st.st_ino, st.st_dev, st.st_nlink, 0, 0,
+                                   st.st_size, st.st_atime, st.st_mtime, st.st_ctime))
+            with mock.patch("os.lstat", return_value=fake):
+                r = _perm_reason(self._env(), self._artifact(), Path(f.name))
+        self.assertIn("owned by root", r)
+        self.assertIn("App Store", r)
+
+    def test_tcc_hint_for_owned_library_path(self):
+        import sys
+        import unittest as _u
+        from pathlib import Path
+        from zap.core.engine import _perm_reason
+        if sys.platform != "darwin":
+            raise _u.SkipTest("darwin only")
+        import tempfile
+        import os
+        with tempfile.TemporaryDirectory() as td:
+            env = self._env(uid=os.getuid(), home=td)
+            lib = Path(td) / "Library" / "Containers" / "x"
+            lib.mkdir(parents=True)
+            r = _perm_reason(env, self._artifact(), lib)
+        self.assertIn("Full Disk Access", r)
+
+    def test_plain_fallback(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from zap.core.engine import _perm_reason
+        with tempfile.NamedTemporaryFile() as f:
+            r = _perm_reason(self._env(uid=os.getuid(), home="/elsewhere"), self._artifact(), Path(f.name))
+        self.assertEqual(r, "permission denied")
